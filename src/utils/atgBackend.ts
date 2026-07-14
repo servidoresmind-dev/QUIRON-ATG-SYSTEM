@@ -10,13 +10,29 @@
 // automática — nenhuma alteração de código é necessária aqui.
 
 import { supabase } from "./supabase";
+import { toast } from "sonner";
 
 const WEBHOOK_URLS = {
   buscarAtivo: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-ativo",
   buscarOs: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-os"
 };
 
-export async function callRpc<T>(
+// Toda função de mock devolve esse marcador junto com o resultado, para que a
+// UI possa deixar bem claro (não só no console) que aquele resultado não veio
+// do backend de verdade.
+export interface Mockable {
+  _mocked?: boolean;
+}
+
+function warnMocked(mensagem: string) {
+  console.warn(`[mock] ${mensagem}`);
+  toast.warning("Resposta simulada (backend ainda não pronto)", {
+    description: mensagem,
+    duration: 6000
+  });
+}
+
+export async function callRpc<T extends Mockable>(
   name: string,
   params: Record<string, unknown>,
   mockResponse: () => T
@@ -28,15 +44,15 @@ export async function callRpc<T>(
   if (!error) return data as T;
 
   if (error.code === "PGRST202") {
-    console.warn(`[mock] RPC "${name}" ainda não existe no backend — usando resposta simulada.`, params);
+    warnMocked(`A função "${name}" ainda não existe no backend — usando resposta simulada.`);
     await new Promise((resolve) => setTimeout(resolve, 400));
-    return mockResponse();
+    return { ...mockResponse(), _mocked: true };
   }
 
   throw error;
 }
 
-async function callWebhook<T extends { ok: boolean }>(
+async function callWebhook<T extends { ok: boolean } & Mockable>(
   url: string,
   body: unknown,
   mockResponse: () => T
@@ -57,14 +73,16 @@ async function callWebhook<T extends { ok: boolean }>(
     return json as T;
   }
 
-  console.warn(`[mock] Webhook "${url}" ainda não responde no contrato esperado — usando resposta simulada.`, json);
+  warnMocked(
+    `O webhook foi disparado e o workflow do n8n iniciou, mas ele ainda não responde com o resultado da busca (só o ack padrão "Workflow was started"). Usando resposta simulada até o nó "Respond to Webhook" ser configurado.`
+  );
   await new Promise((resolve) => setTimeout(resolve, 600));
-  return mockResponse();
+  return { ...mockResponse(), _mocked: true };
 }
 
 // ── Fluxo A: validar cadastro ──
 
-export interface ValidarCadastroResult {
+export interface ValidarCadastroResult extends Mockable {
   ok: boolean;
 }
 
@@ -74,7 +92,7 @@ export function validarCadastro(
   usuario: string,
   validar: boolean
 ): Promise<ValidarCadastroResult> {
-  return callRpc(
+  return callRpc<ValidarCadastroResult>(
     "validar_cadastro",
     { p_entidade: entidade, p_id: id, p_usuario: usuario, p_validar: validar },
     () => ({ ok: true })
@@ -83,7 +101,7 @@ export function validarCadastro(
 
 // ── Fluxo Preditiva: salvar item ──
 
-export interface SalvarPreditivaResult {
+export interface SalvarPreditivaResult extends Mockable {
   ok: boolean;
 }
 
@@ -92,7 +110,7 @@ export function salvarPreditiva(
   campos: Record<string, unknown>,
   usuario: string
 ): Promise<SalvarPreditivaResult> {
-  return callRpc(
+  return callRpc<SalvarPreditivaResult>(
     "salvar_preditiva",
     { p_id: id, p_campos: campos, p_usuario: usuario },
     () => ({ ok: true })
@@ -101,7 +119,7 @@ export function salvarPreditiva(
 
 // ── Fluxo C: buscar ativo no iClass ──
 
-export interface BuscarAtivoResultSucesso {
+export interface BuscarAtivoResultSucesso extends Mockable {
   ok: true;
   ativo_id: number;
   descricao: string;
@@ -133,7 +151,7 @@ export function buscarAtivo(por: "serialNumber" | "patrimony", valor: string): P
 
 // ── Fluxo B: buscar OS / ficha de levantamento ──
 
-export interface BuscarOsResultSucesso {
+export interface BuscarOsResultSucesso extends Mockable {
   ok: true;
   codigo_os: string;
   checklist_pesquisa_id: number;
@@ -170,7 +188,7 @@ export function buscarOs(ativoId: number, codigoOs: string): Promise<BuscarOsRes
 
 // ── Fluxo C: criar gerador ──
 
-export interface CriarGeradorResult {
+export interface CriarGeradorResult extends Mockable {
   ok: boolean;
   id?: number;
 }
@@ -181,7 +199,7 @@ export function criarGerador(
   dados: Record<string, unknown>,
   usuario: string
 ): Promise<CriarGeradorResult> {
-  return callRpc(
+  return callRpc<CriarGeradorResult>(
     "criar_gerador",
     { p_omie_cliente_id: omieClienteId, p_ativo_id: ativoId, p_dados: dados, p_usuario: usuario },
     () => ({ ok: true, id: -Math.floor(Math.random() * 1000000) })

@@ -251,10 +251,21 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
 
         {step === "form" && ativo && (
           <form onSubmit={handleCriar} className="space-y-4">
-            <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>Ativo localizado: {ativo.descricao} (ID iClass: {ativo.ativo_id})</span>
-            </div>
+            {ativo._mocked ? (
+              <div className="bg-amber-50 border border-amber-100 text-amber-800 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Resultado <strong>simulado</strong> — o webhook do n8n foi disparado, mas o backend ainda não
+                  responde com o resultado real da busca. Estes dados não confirmam que o ativo existe de verdade
+                  no iClass.
+                </span>
+              </div>
+            ) : (
+              <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>Ativo localizado: {ativo.descricao} (ID iClass: {ativo.ativo_id})</span>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>

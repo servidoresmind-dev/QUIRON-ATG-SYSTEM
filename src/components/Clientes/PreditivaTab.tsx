@@ -154,7 +154,18 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
   }
 
   return (
-    <div className="overflow-x-auto border border-slate-100 rounded-xl">
+    <div className="space-y-3">
+      {items.length === 0 && (
+        <div className="bg-slate-50 border border-slate-100 text-slate-500 text-[11px] rounded-xl px-4 py-3 flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-slate-400" />
+          <span>
+            Nenhum item de preditiva encontrado para este gerador na planilha de importação. Isso costuma acontecer
+            quando o equipamento ainda não foi casado (matching) com a planilha de preditivas — não é um erro do
+            sistema. O item de Oxicatalisador abaixo é cadastrado separadamente e sempre aparece.
+          </span>
+        </div>
+      )}
+      <div className="overflow-x-auto border border-slate-100 rounded-xl">
       <table className="w-full text-left border-collapse">
         <thead>
           <tr className="bg-slate-50/70 text-[9px] uppercase font-bold text-slate-400">
@@ -278,6 +289,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

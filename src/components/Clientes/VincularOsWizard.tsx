@@ -14,7 +14,7 @@ export default function VincularOsWizard({ gerador, onLinked }: VincularOsWizard
   const [codigoOs, setCodigoOs] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ checklistId: number; ficha: FichaLevantamento } | null>(null);
+  const [preview, setPreview] = useState<{ checklistId: number; ficha: FichaLevantamento; mocked: boolean } | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   const handleBuscar = async (e: React.FormEvent) => {
@@ -45,7 +45,11 @@ export default function VincularOsWizard({ gerador, onLinked }: VincularOsWizard
       return;
     }
 
-    setPreview({ checklistId: result.checklist_pesquisa_id, ficha: result.ficha_levantamento as FichaLevantamento });
+    setPreview({
+      checklistId: result.checklist_pesquisa_id,
+      ficha: result.ficha_levantamento as FichaLevantamento,
+      mocked: Boolean(result._mocked)
+    });
   };
 
   const handleConfirmar = async () => {
@@ -110,7 +114,18 @@ export default function VincularOsWizard({ gerador, onLinked }: VincularOsWizard
         </div>
       )}
 
-      {preview && (
+      {preview && preview.mocked && (
+        <div className="bg-amber-50 border border-amber-100 text-amber-800 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            Resultado <strong>simulado</strong> — o webhook do n8n foi disparado, mas o backend ainda não responde
+            com a ficha real. Por segurança, a confirmação fica bloqueada até o backend responder de verdade, para
+            não gravar dados falsos na ficha deste gerador.
+          </span>
+        </div>
+      )}
+
+      {preview && !preview.mocked && (
         <div className="space-y-3">
           <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
