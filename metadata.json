@@ -1,0 +1,6 @@
+{
+  "name": "ATG | SISTEMA DE ORDEM DE SERVIÇOS E ORÇAMENTOS",
+  "description": "Sistema de gestão e acompanhamento de ordens de serviço, orçamentos, clientes e geradores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
