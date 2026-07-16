@@ -17,15 +17,14 @@ import {
   Zap
 } from "lucide-react";
 import { navigateTo } from "../../utils/navigation";
-import { PerfilUsuario } from "../../types";
 import quironLogoBall from "../../assets/logo_boll.svg";
 
 interface SidebarProps {
   currentPath: string;
-  activeRole?: PerfilUsuario;
+  allowedPages: string[];
 }
 
-export default function Sidebar({ currentPath, activeRole }: SidebarProps) {
+export default function Sidebar({ currentPath, allowedPages }: SidebarProps) {
   const menuItems = [
     {
       path: "dashboard",
@@ -83,13 +82,7 @@ export default function Sidebar({ currentPath, activeRole }: SidebarProps) {
     }
   ];
 
-  // Restrict access to usuarios if not Admin
-  const filteredMenuItems = menuItems.filter(item => {
-    if (item.path === "usuarios" && activeRole !== PerfilUsuario.ADMIN) {
-      return false;
-    }
-    return true;
-  });
+  const filteredMenuItems = menuItems.filter((item) => allowedPages.includes(item.path));
 
   const getIsActive = (itemPath: string) => {
     if (itemPath === "dashboard" && currentPath === "dashboard") return true;

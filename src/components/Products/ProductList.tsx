@@ -9,17 +9,23 @@ import {
   AlertTriangle,
   Edit3,
   Save,
-  RotateCw
+  RotateCw,
+  Ban,
+  CheckCircle2
 } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "../../utils/supabase";
 import { MOCK_PRODUTOS } from "../../data/productsServicesMock";
-import { Produto } from "../../types";
+import { Produto, PerfilUsuario } from "../../types";
 import { exportToExcel } from "../../utils/excel";
 import { toast } from "sonner";
 import Modal from "../ui/Modal";
 import { WEBHOOK_URLS, triggerWebhook } from "../../utils/webhooks";
 
-export default function ProductList() {
+interface ProductListProps {
+  activeRole: PerfilUsuario;
+}
+
+export default function ProductList({ activeRole }: ProductListProps) {
   const [products, setProducts] = useState<Produto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +166,27 @@ export default function ProductList() {
     } finally {
       setUpdatingPrices(false);
     }
+  };
+
+  const handleToggleAtivo = async (product: Produto) => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const { error: updateError } = await supabase
+      .from("Produtos")
+      .update({ inativo: !product.inativo })
+      .eq("id", product.id);
+
+    if (updateError) {
+      toast.error("Erro ao alterar status do produto.", { description: updateError.message });
+      return;
+    }
+
+    setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, inativo: !p.inativo } : p)));
+    toast.success(
+      product.inativo
+        ? `${product.nome_produto || "Produto"} reativado com sucesso!`
+        : `${product.nome_produto || "Produto"} inativado com sucesso!`
+    );
   };
 
   const handleOpenEdit = (product: Produto) => {
@@ -366,6 +393,7 @@ export default function ProductList() {
                   <th className="py-4 px-6 text-right w-48">Valor Unitário</th>
                   <th className="py-4 px-6 text-center w-36">Categoria</th>
                   <th className="py-4 px-6 text-center w-36">CFOP</th>
+                  <th className="py-4 px-6 text-center w-28">Status</th>
                   <th className="py-4 px-6 text-right w-24">Ações</th>
                 </tr>
               </thead>
@@ -406,14 +434,39 @@ export default function ProductList() {
                         </span>
                       )}
                     </td>
-                    <td className="py-3.5 px-6 text-right">
-                      <button
-                        onClick={() => handleOpenEdit(product)}
-                        className="p-1.5 text-slate-400 hover:text-[#0B5577] hover:bg-[#0B5577]/10 rounded-lg transition-all"
-                        title="Editar produto"
+                    <td className="py-3.5 px-6 text-center">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          product.inativo ? "bg-slate-100 text-slate-500" : "bg-emerald-50 text-emerald-700"
+                        }`}
                       >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
+                        <span className={`w-1.5 h-1.5 rounded-full ${product.inativo ? "bg-slate-400" : "bg-emerald-500"}`} />
+                        {product.inativo ? "Inativo" : "Ativo"}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-6 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {activeRole === PerfilUsuario.ADMIN && (
+                          <button
+                            onClick={() => handleToggleAtivo(product)}
+                            className={`p-1.5 rounded-lg transition-all ${
+                              product.inativo
+                                ? "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
+                                : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                            }`}
+                            title={product.inativo ? "Reativar produto" : "Inativar produto"}
+                          >
+                            {product.inativo ? <CheckCircle2 className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleOpenEdit(product)}
+                          className="p-1.5 text-slate-400 hover:text-[#0B5577] hover:bg-[#0B5577]/10 rounded-lg transition-all"
+                          title="Editar produto"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

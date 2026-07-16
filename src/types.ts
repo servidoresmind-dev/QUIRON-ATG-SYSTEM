@@ -56,6 +56,9 @@ export interface Usuario {
   nome: string;
   email: string;
   perfil: PerfilUsuario;
+  // null = Administrador, ou Usuário Comum criado antes desta funcionalidade
+  // existir (mantém acesso total antigo, "tudo exceto Usuários").
+  paginas_permitidas: string[] | null;
   ativo: boolean;
   criado_em: string;
 }
@@ -68,6 +71,7 @@ export interface Produto {
   valor_unitario: number | null;
   categora_item: number | null; // typo intencional — igual ao banco
   CFOP: number | null;
+  inativo: boolean;
 }
 
 export interface Servico {
@@ -76,6 +80,7 @@ export interface Servico {
   nCodServ: number | null;
   cDescricao: string | null;
   nValorDesc: number | null;
+  inativo: boolean;
 }
 
 export interface GeradorFicha {
@@ -175,6 +180,8 @@ export interface ClienteCard {
   n_validados: number;
   primeiro_gerador: string | null;
   estado: EstadoClienteCard;
+  // Mesclado a partir de omie_clientes após o fetch da view — ver Clientes.tsx.
+  inativo: boolean;
 }
 
 export interface OmieClienteDetalhe {

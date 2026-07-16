@@ -22,6 +22,7 @@ import { formatDate } from "../utils/date";
 import { toast } from "sonner";
 import Modal from "../components/ui/Modal";
 import { supabase, isSupabaseConfigured } from "../utils/supabase";
+import { APP_PAGES } from "../utils/pages";
 
 interface UsuariosProps {
   activeRole: PerfilUsuario;
@@ -47,6 +48,7 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
   const [formNome, setFormNome] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formPerfil, setFormPerfil] = useState<PerfilUsuario>(PerfilUsuario.COMUM);
+  const [formPaginas, setFormPaginas] = useState<string[]>(["dashboard"]);
 
   // Form errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -54,6 +56,15 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
   // Form states - Edit User
   const [editNome, setEditNome] = useState("");
   const [editPerfil, setEditPerfil] = useState<PerfilUsuario>(PerfilUsuario.COMUM);
+  const [editPaginas, setEditPaginas] = useState<string[]>([]);
+
+  const togglePagina = (
+    paginas: string[],
+    setPaginas: (p: string[]) => void,
+    key: string
+  ) => {
+    setPaginas(paginas.includes(key) ? paginas.filter((p) => p !== key) : [...paginas, key]);
+  };
 
   const invokeManageUsers = async (body: Record<string, unknown>) => {
     if (!supabase) throw new Error("Supabase não configurado.");
@@ -142,7 +153,13 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
 
     setSaving(true);
     try {
-      await invokeManageUsers({ action: "invite", nome: formNome, email: formEmail, perfil: formPerfil });
+      await invokeManageUsers({
+        action: "invite",
+        nome: formNome,
+        email: formEmail,
+        perfil: formPerfil,
+        paginas_permitidas: formPaginas
+      });
       toast.success("Convite enviado com sucesso!", {
         description: `Um e-mail foi enviado para ${formEmail} com instruções para definir a senha.`
       });
@@ -150,6 +167,7 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
       setFormNome("");
       setFormEmail("");
       setFormPerfil(PerfilUsuario.COMUM);
+      setFormPaginas(["dashboard"]);
       fetchUsuarios();
     } catch (err: any) {
       toast.error("Erro ao convidar usuário.", { description: err.message });
@@ -163,6 +181,8 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
     setShowEditModal(user);
     setEditNome(user.nome);
     setEditPerfil(user.perfil);
+    // null = legado/administrador → começa com tudo marcado; array explícito é respeitado como está.
+    setEditPaginas(user.paginas_permitidas ?? APP_PAGES.map((p) => p.key));
   };
 
   // Handle Save Edited User
@@ -175,7 +195,13 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
 
     setSaving(true);
     try {
-      await invokeManageUsers({ action: "updateProfile", id: showEditModal.id, nome: editNome, perfil: editPerfil });
+      await invokeManageUsers({
+        action: "updateProfile",
+        id: showEditModal.id,
+        nome: editNome,
+        perfil: editPerfil,
+        paginas_permitidas: editPaginas
+      });
       toast.success(`Cadastro do usuário ${editNome} atualizado!`);
       setShowEditModal(null);
       fetchUsuarios();
@@ -312,6 +338,13 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                       >
                         {ROLE_LABELS[u.perfil]}
                       </span>
+                      {u.perfil === PerfilUsuario.COMUM && (
+                        <span className="block text-[10px] text-slate-400 font-medium mt-1">
+                          {u.paginas_permitidas === null
+                            ? "todas as páginas (legado)"
+                            : `${u.paginas_permitidas.length} página${u.paginas_permitidas.length === 1 ? "" : "s"} liberada${u.paginas_permitidas.length === 1 ? "" : "s"}`}
+                        </span>
+                      )}
                     </td>
 
                     {/* Created Em */}
@@ -448,10 +481,34 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                 onChange={(e) => setFormPerfil(e.target.value as PerfilUsuario)}
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
               >
-                <option value={PerfilUsuario.COMUM}>Usuário Comum (Acesso operacional: O.S., Orçamentos, Clientes, Produtos, Serviços)</option>
+                <option value={PerfilUsuario.COMUM}>Usuário Comum (escolha as páginas abaixo)</option>
                 <option value={PerfilUsuario.ADMIN}>Administrador (Acesso completo e controle de usuários)</option>
               </select>
             </div>
+
+            {formPerfil === PerfilUsuario.COMUM && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-500">Páginas Liberadas *</label>
+                <div className="grid grid-cols-2 gap-2 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                  {APP_PAGES.map((page) => (
+                    <label key={page.key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formPaginas.includes(page.key)}
+                        onChange={() => togglePagina(formPaginas, setFormPaginas, page.key)}
+                        className="rounded border-slate-300 text-brand-500 focus:ring-brand-500 cursor-pointer"
+                      />
+                      <span>{page.label}</span>
+                    </label>
+                  ))}
+                </div>
+                {formPaginas.length === 0 && (
+                  <p className="text-[10px] text-amber-600 font-semibold">
+                    Nenhuma página marcada — este usuário não conseguirá acessar nada do sistema.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </Modal>
       )}
@@ -504,7 +561,7 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                 onChange={(e) => setEditPerfil(e.target.value as PerfilUsuario)}
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer"
               >
-                <option value={PerfilUsuario.COMUM}>Usuário Comum (Acesso operacional: O.S., Orçamentos, Clientes, Produtos, Serviços)</option>
+                <option value={PerfilUsuario.COMUM}>Usuário Comum (escolha as páginas abaixo)</option>
                 <option value={PerfilUsuario.ADMIN}>Administrador (Acesso completo e controle de usuários)</option>
               </select>
               {showEditModal.id === currentUserId && (
@@ -513,6 +570,30 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                 </p>
               )}
             </div>
+
+            {editPerfil === PerfilUsuario.COMUM && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-500">Páginas Liberadas *</label>
+                <div className="grid grid-cols-2 gap-2 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                  {APP_PAGES.map((page) => (
+                    <label key={page.key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editPaginas.includes(page.key)}
+                        onChange={() => togglePagina(editPaginas, setEditPaginas, page.key)}
+                        className="rounded border-slate-300 text-brand-500 focus:ring-brand-500 cursor-pointer"
+                      />
+                      <span>{page.label}</span>
+                    </label>
+                  ))}
+                </div>
+                {editPaginas.length === 0 && (
+                  <p className="text-[10px] text-amber-600 font-semibold">
+                    Nenhuma página marcada — este usuário não conseguirá acessar nada do sistema.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </Modal>
       )}

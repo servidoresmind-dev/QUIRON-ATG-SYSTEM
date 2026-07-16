@@ -7,16 +7,22 @@ import {
   ChevronRight,
   RefreshCw,
   AlertTriangle,
-  RotateCw
+  RotateCw,
+  Ban,
+  CheckCircle2
 } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "../../utils/supabase";
 import { MOCK_SERVICOS } from "../../data/productsServicesMock";
-import { Servico } from "../../types";
+import { Servico, PerfilUsuario } from "../../types";
 import { exportToExcel } from "../../utils/excel";
 import { toast } from "sonner";
 import { WEBHOOK_URLS, triggerWebhook } from "../../utils/webhooks";
 
-export default function ServiceList() {
+interface ServiceListProps {
+  activeRole: PerfilUsuario;
+}
+
+export default function ServiceList({ activeRole }: ServiceListProps) {
   const [services, setServices] = useState<Servico[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +123,27 @@ export default function ServiceList() {
     toast.success("Excel exportado com sucesso!", {
       description: `${dataToExport.length} serviços foram incluídos no relatório.`
     });
+  };
+
+  const handleToggleAtivo = async (service: Servico) => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const { error: updateError } = await supabase
+      .from("Serviços")
+      .update({ inativo: !service.inativo })
+      .eq("id", service.id);
+
+    if (updateError) {
+      toast.error("Erro ao alterar status do serviço.", { description: updateError.message });
+      return;
+    }
+
+    setServices((prev) => prev.map((s) => (s.id === service.id ? { ...s, inativo: !s.inativo } : s)));
+    toast.success(
+      service.inativo
+        ? `${service.cDescricao || "Serviço"} reativado com sucesso!`
+        : `${service.cDescricao || "Serviço"} inativado com sucesso!`
+    );
   };
 
   const handleUpdatePrices = async () => {
@@ -266,11 +293,13 @@ export default function ServiceList() {
                   <th className="py-4 px-6 w-44">Código do Serviço</th>
                   <th className="py-4 px-6">Descrição</th>
                   <th className="py-4 px-6 text-right w-48">Valor</th>
+                  <th className="py-4 px-6 text-center w-28">Status</th>
+                  {activeRole === PerfilUsuario.ADMIN && <th className="py-4 px-6 text-right w-20">Ações</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {paginatedServices.map((service) => (
-                  <tr 
+                  <tr
                     key={service.id}
                     className="hover:bg-slate-50/50 transition-colors text-xs text-slate-600 font-medium"
                   >
@@ -283,6 +312,31 @@ export default function ServiceList() {
                     <td className="py-4 px-6 text-right font-semibold text-slate-900">
                       {formatPrice(service.nValorDesc)}
                     </td>
+                    <td className="py-4 px-6 text-center">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          service.inativo ? "bg-slate-100 text-slate-500" : "bg-emerald-50 text-emerald-700"
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${service.inativo ? "bg-slate-400" : "bg-emerald-500"}`} />
+                        {service.inativo ? "Inativo" : "Ativo"}
+                      </span>
+                    </td>
+                    {activeRole === PerfilUsuario.ADMIN && (
+                      <td className="py-4 px-6 text-right">
+                        <button
+                          onClick={() => handleToggleAtivo(service)}
+                          className={`p-1.5 rounded-lg transition-all ${
+                            service.inativo
+                              ? "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
+                              : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                          }`}
+                          title={service.inativo ? "Reativar serviço" : "Inativar serviço"}
+                        >
+                          {service.inativo ? <CheckCircle2 className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

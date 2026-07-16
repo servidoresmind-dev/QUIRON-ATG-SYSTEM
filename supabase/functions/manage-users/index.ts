@@ -69,6 +69,10 @@ Deno.serve(async (req) => {
         nome: (u.user_metadata?.nome as string) || u.email || "Sem nome",
         email: u.email,
         perfil: u.user_metadata?.perfil === "administrador" ? "administrador" : "usuario_comum",
+        // null = usuário criado antes da checklist por página existir (mantém acesso total antigo).
+        paginas_permitidas: Array.isArray(u.user_metadata?.paginas_permitidas)
+          ? u.user_metadata.paginas_permitidas
+          : null,
         ativo: !u.banned_until || new Date(u.banned_until) <= new Date(),
         criado_em: u.created_at
       }));
@@ -77,13 +81,21 @@ Deno.serve(async (req) => {
     }
 
     if (action === "invite") {
-      const { nome, email, perfil } = payload;
+      const { nome, email, perfil, paginas_permitidas } = payload;
       if (!nome || !email || !perfil) {
         return json({ error: "Nome, e-mail e perfil são obrigatórios." }, 400);
       }
 
       const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
-        data: { nome, perfil }
+        data: {
+          nome,
+          perfil,
+          // Administrador nunca usa checklist (acesso total). Usuário Comum
+          // recebe a lista marcada — array vazio é uma escolha válida (sem
+          // nenhuma página liberada), então só cai no "null legado" se nem
+          // foi enviada.
+          paginas_permitidas: perfil === "administrador" ? null : (paginas_permitidas ?? [])
+        }
       });
       if (error) throw error;
 
@@ -91,7 +103,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "updateProfile") {
-      const { id, nome, perfil } = payload;
+      const { id, nome, perfil, paginas_permitidas } = payload;
       if (!id) return json({ error: "ID do usuário é obrigatório." }, 400);
 
       if (id === callerData.user.id && perfil !== "administrador") {
@@ -99,7 +111,11 @@ Deno.serve(async (req) => {
       }
 
       const { data, error } = await adminClient.auth.admin.updateUserById(id, {
-        user_metadata: { nome, perfil }
+        user_metadata: {
+          nome,
+          perfil,
+          paginas_permitidas: perfil === "administrador" ? null : (paginas_permitidas ?? [])
+        }
       });
       if (error) throw error;
 
