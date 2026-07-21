@@ -14,7 +14,8 @@ import {
   HelpCircle,
   Package,
   Wrench,
-  Zap
+  Zap,
+  History
 } from "lucide-react";
 import { navigateTo } from "../../utils/navigation";
 import quironLogoBall from "../../assets/logo_boll.svg";
@@ -69,6 +70,12 @@ export default function Sidebar({ currentPath, allowedPages }: SidebarProps) {
       hash: "#/geradores"
     },
     {
+      path: "historico",
+      icon: History,
+      label: "Histórico",
+      hash: "#/historico"
+    },
+    {
       path: "usuarios",
       icon: ShieldCheck,
       label: "Controle de Usuários",
@@ -92,6 +99,7 @@ export default function Sidebar({ currentPath, allowedPages }: SidebarProps) {
     if (itemPath === "produtos" && currentPath === "produtos") return true;
     if (itemPath === "servicos" && currentPath === "servicos") return true;
     if (itemPath === "geradores" && currentPath === "geradores") return true;
+    if (itemPath === "historico" && currentPath === "historico") return true;
     if (itemPath === "usuarios" && currentPath === "usuarios") return true;
     if (itemPath === "configuracoes" && currentPath === "configuracoes") return true;
     return false;

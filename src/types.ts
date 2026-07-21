@@ -180,8 +180,10 @@ export interface ClienteCard {
   n_validados: number;
   primeiro_gerador: string | null;
   estado: EstadoClienteCard;
-  // Mesclado a partir de omie_clientes após o fetch da view — ver Clientes.tsx.
+  // Mesclados a partir de omie_clientes após o fetch da view — ver Clientes.tsx
+  // (a view vw_cliente_card não expõe essas duas colunas).
   inativo: boolean;
+  iclass_nome: string | null;
 }
 
 export interface OmieClienteDetalhe {
@@ -194,6 +196,7 @@ export interface OmieClienteDetalhe {
   codigo_iclass_raw: string | null;
   iclass_id_encontrado: number | null;
   iclass_codigo_encontrado: string | null;
+  iclass_nome: string | null;
   status_conferencia: string | null;
   observacao: string | null;
   conferido_em: string | null;
@@ -206,17 +209,31 @@ export interface OmieClienteDetalhe {
   validado_em: string | null;
 }
 
+// Seção "achatada" — cada campo é um valor de texto simples (ex: motor, gerador).
+export type FichaSecaoSimples = Record<string, string>;
+// Seção "aninhada" — cada campo é, por sua vez, um sub-objeto (ex: filtros,
+// mangueiras: cada item tem {qtd, codigo, fabricante} ou {metros, polegadas}).
+export type FichaSecaoAninhada = Record<string, Record<string, string>>;
+
+export interface FichaLevantamentoOutroItem {
+  secao: string;
+  pergunta: string;
+  resposta: string;
+}
+
 export interface FichaLevantamento {
-  motor?: Record<string, string>;
-  bateria?: Record<string, string>;
-  filtros?: Record<string, string>;
-  gerador?: Record<string, string>;
-  alternador?: Record<string, string>;
-  mangueiras?: Record<string, string>;
-  controlador?: Record<string, string>;
-  escapamento?: Record<string, string>;
-  bomba_injetora?: Record<string, string>;
-  [key: string]: Record<string, string> | undefined;
+  motor?: FichaSecaoSimples;
+  bateria?: FichaSecaoSimples;
+  filtros?: FichaSecaoAninhada;
+  gerador?: FichaSecaoSimples;
+  alternador?: FichaSecaoSimples;
+  mangueiras?: FichaSecaoAninhada;
+  controlador?: FichaSecaoSimples;
+  escapamento?: FichaSecaoSimples;
+  bomba_injetora?: FichaSecaoSimples;
+  // Campos do iClass que não se encaixam nas seções acima — lista, não objeto.
+  outros?: FichaLevantamentoOutroItem[];
+  [key: string]: FichaSecaoSimples | FichaSecaoAninhada | FichaLevantamentoOutroItem[] | undefined;
 }
 
 export interface GeradorAtg {
@@ -250,6 +267,10 @@ export interface GeradorAtg {
   ficha_validada_por_humano: boolean;
   ficha_validada_por: string | null;
   ficha_validada_em: string | null;
+  // Arquivamento (soft delete) — ver Ajuste #5 em AJUSTES_ALISSON.md.
+  arquivado: boolean;
+  arquivado_por: string | null;
+  arquivado_em: string | null;
 }
 
 export interface Preditiva {
@@ -285,4 +306,17 @@ export type PeriodType = "hoje" | "semana" | "mes" | "custom";
 export interface DateRange {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
+}
+
+// ── Log de edições (Ajuste #6 — AJUSTES_ALISSON.md) ──
+
+export interface LogEdicao {
+  id: number;
+  entidade: string;
+  entidade_id: number;
+  acao: string;
+  usuario: string;
+  valor_antes: Record<string, unknown> | null;
+  valor_depois: Record<string, unknown> | null;
+  criado_em: string;
 }

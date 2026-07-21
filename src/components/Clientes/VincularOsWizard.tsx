@@ -1,20 +1,26 @@
 import React, { useState } from "react";
 import { Search, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { GeradorAtg, FichaLevantamento } from "../../types";
+import { GeradorAtg, FichaLevantamento, FichaLevantamentoOutroItem } from "../../types";
 import { buscarOs } from "../../utils/atgBackend";
 import { supabase } from "../../utils/supabase";
 import { toast } from "sonner";
+import { registrarLog } from "../../utils/logEdicoes";
 
 interface VincularOsWizardProps {
   gerador: GeradorAtg;
+  usuario: string;
   onLinked: (updated: GeradorAtg) => void;
 }
 
-export default function VincularOsWizard({ gerador, onLinked }: VincularOsWizardProps) {
+function isSubObjeto(valor: unknown): valor is Record<string, string> {
+  return valor != null && typeof valor === "object" && !Array.isArray(valor);
+}
+
+export default function VincularOsWizard({ gerador, usuario, onLinked }: VincularOsWizardProps) {
   const [codigoOs, setCodigoOs] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ checklistId: number; ficha: FichaLevantamento; mocked: boolean } | null>(null);
+  const [preview, setPreview] = useState<{ checklistId: number; ficha: FichaLevantamento } | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   const handleBuscar = async (e: React.FormEvent) => {
@@ -47,8 +53,7 @@ export default function VincularOsWizard({ gerador, onLinked }: VincularOsWizard
 
     setPreview({
       checklistId: result.checklist_pesquisa_id,
-      ficha: result.ficha_levantamento as FichaLevantamento,
-      mocked: Boolean(result._mocked)
+      ficha: result.ficha_levantamento as FichaLevantamento
     });
   };
 
@@ -57,14 +62,16 @@ export default function VincularOsWizard({ gerador, onLinked }: VincularOsWizard
 
     setConfirming(true);
 
+    const valorDepois = {
+      ficha_levantamento: preview.ficha,
+      codigo_os_ficha_levantamento: codigoOs.trim(),
+      checklist_pesquisa_id: preview.checklistId,
+      ficha_validada_por_humano: true
+    };
+
     const { data, error: updateError } = await supabase
       .from("geradores_atg")
-      .update({
-        ficha_levantamento: preview.ficha,
-        codigo_os_ficha_levantamento: codigoOs.trim(),
-        checklist_pesquisa_id: preview.checklistId,
-        ficha_validada_por_humano: true
-      })
+      .update(valorDepois)
       .eq("id", gerador.id)
       .select()
       .single();
@@ -75,6 +82,20 @@ export default function VincularOsWizard({ gerador, onLinked }: VincularOsWizard
       toast.error("Erro ao vincular ficha.", { description: updateError.message });
       return;
     }
+
+    await registrarLog(
+      "ficha",
+      gerador.id,
+      "vinculou_ficha",
+      usuario,
+      {
+        ficha_levantamento: gerador.ficha_levantamento,
+        codigo_os_ficha_levantamento: gerador.codigo_os_ficha_levantamento,
+        checklist_pesquisa_id: gerador.checklist_pesquisa_id,
+        ficha_validada_por_humano: gerador.ficha_validada_por_humano
+      },
+      valorDepois
+    );
 
     toast.success("Ficha de levantamento vinculada com sucesso!");
     onLinked(data as GeradorAtg);
@@ -114,18 +135,7 @@ export default function VincularOsWizard({ gerador, onLinked }: VincularOsWizard
         </div>
       )}
 
-      {preview && preview.mocked && (
-        <div className="bg-amber-50 border border-amber-100 text-amber-800 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>
-            Resultado <strong>simulado</strong> — o webhook do n8n foi disparado, mas o backend ainda não responde
-            com a ficha real. Por segurança, a confirmação fica bloqueada até o backend responder de verdade, para
-            não gravar dados falsos na ficha deste gerador.
-          </span>
-        </div>
-      )}
-
-      {preview && !preview.mocked && (
+      {preview && (
         <div className="space-y-3">
           <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
@@ -133,23 +143,52 @@ export default function VincularOsWizard({ gerador, onLinked }: VincularOsWizard
           </div>
 
           <div className="max-h-64 overflow-y-auto space-y-3 border border-slate-100 rounded-xl p-3">
-            {Object.entries(preview.ficha).map(([secao, campos]) => (
-              <div key={secao}>
-                <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">{secao.replace(/_/g, " ")}</h5>
-                {campos && Object.keys(campos).length > 0 ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(campos).map(([campo, valor]) => (
-                      <div key={campo} className="text-[11px]">
-                        <span className="text-slate-400">{campo.replace(/_/g, " ")}: </span>
-                        <span className="font-semibold text-slate-700">{valor || "—"}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-slate-400 italic">Sem dados nesta seção.</p>
-                )}
+            {Object.entries(preview.ficha)
+              .filter(([secao]) => secao !== "outros")
+              .map(([secao, campos]) => (
+                <div key={secao}>
+                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">{secao.replace(/_/g, " ")}</h5>
+                  {campos && Object.keys(campos).length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(campos as Record<string, unknown>).map(([campo, valor]) =>
+                        isSubObjeto(valor) ? (
+                          <div key={campo} className="col-span-2 bg-slate-50 rounded-lg p-2">
+                            <p className="text-[10px] font-semibold text-slate-500 mb-1">{campo.replace(/_/g, " ")}</p>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {Object.entries(valor).map(([subcampo, subvalor]) => (
+                                <div key={subcampo} className="text-[10px]">
+                                  <span className="text-slate-400">{subcampo}: </span>
+                                  <span className="font-semibold text-slate-700">{subvalor || "—"}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div key={campo} className="text-[11px]">
+                            <span className="text-slate-400">{campo.replace(/_/g, " ")}: </span>
+                            <span className="font-semibold text-slate-700">{(valor as string) || "—"}</span>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic">Sem dados nesta seção.</p>
+                  )}
+                </div>
+              ))}
+            {Array.isArray(preview.ficha.outros) && preview.ficha.outros.length > 0 && (
+              <div>
+                <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Informações adicionais</h5>
+                <div className="space-y-1">
+                  {(preview.ficha.outros as FichaLevantamentoOutroItem[]).map((item, idx) => (
+                    <p key={idx} className="text-[11px]">
+                      <span className="text-slate-400">{item.pergunta}: </span>
+                      <span className="font-semibold text-slate-700">{item.resposta || "—"}</span>
+                    </p>
+                  ))}
+                </div>
               </div>
-            ))}
+            )}
           </div>
 
           <button

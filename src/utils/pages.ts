@@ -11,6 +11,7 @@ export const APP_PAGES: { key: string; label: string }[] = [
   { key: "produtos", label: "Produtos" },
   { key: "servicos", label: "Serviços" },
   { key: "geradores", label: "Geradores" },
+  { key: "historico", label: "Histórico" },
   { key: "configuracoes", label: "Configurações" }
 ];
 

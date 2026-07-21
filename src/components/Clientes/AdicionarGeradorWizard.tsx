@@ -12,7 +12,7 @@ interface AdicionarGeradorWizardProps {
   onCreated: (novo: GeradorAtg) => void;
 }
 
-type Step = "serie" | "patrimonio" | "bloqueado" | "multiplos" | "form";
+type Step = "serie" | "patrimonio" | "bloqueado" | "multiplos" | "form" | "revisao";
 
 export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCreated }: AdicionarGeradorWizardProps) {
   const [step, setStep] = useState<Step>("serie");
@@ -106,8 +106,7 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
     setStep("form");
   };
 
-  const handleCriar = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCriar = async () => {
     if (!ativo) return;
 
     setCreating(true);
@@ -153,7 +152,10 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
         validado_em: null,
         ficha_validada_por_humano: false,
         ficha_validada_por: null,
-        ficha_validada_em: null
+        ficha_validada_em: null,
+        arquivado: false,
+        arquivado_por: null,
+        arquivado_em: null
       };
 
       toast.success("Gerador criado com sucesso! Agora vincule a ficha de levantamento.");
@@ -250,7 +252,13 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
         )}
 
         {step === "form" && ativo && (
-          <form onSubmit={handleCriar} className="space-y-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setStep("revisao");
+            }}
+            className="space-y-4"
+          >
             {ativo._mocked ? (
               <div className="bg-amber-50 border border-amber-100 text-amber-800 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -299,12 +307,45 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
 
             <button
               type="submit"
-              disabled={creating}
-              className="w-full py-2.5 bg-brand-500 text-white rounded-xl font-bold text-xs hover:bg-brand-600 transition-colors shadow-soft cursor-pointer disabled:opacity-60"
+              className="w-full py-2.5 bg-brand-500 text-white rounded-xl font-bold text-xs hover:bg-brand-600 transition-colors shadow-soft cursor-pointer"
             >
-              {creating ? "Criando..." : "Criar Gerador"}
+              Revisar e Confirmar
             </button>
           </form>
+        )}
+
+        {step === "revisao" && ativo && (
+          <div className="space-y-4">
+            <div className="bg-brand-50 border border-brand-100 text-brand-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>Confira os dados abaixo. O gerador só é criado depois que você confirmar.</span>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-2 text-xs">
+              <p><span className="text-slate-400">Fabricante:</span> <span className="font-semibold text-slate-700">{formFabricante || "—"}</span></p>
+              <p><span className="text-slate-400">Modelo:</span> <span className="font-semibold text-slate-700">{formModelo || "—"}</span></p>
+              <p><span className="text-slate-400">Número de Série:</span> <span className="font-mono font-semibold text-slate-700">{formNumSerie || "—"}</span></p>
+              <p><span className="text-slate-400">Descrição (iClass):</span> <span className="font-semibold text-slate-700">{ativo.descricao || "—"}</span></p>
+              <p><span className="text-slate-400">ID iClass:</span> <span className="font-mono font-semibold text-slate-700">{ativo.ativo_id}</span></p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCriar}
+                disabled={creating}
+                className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-colors shadow-soft cursor-pointer disabled:opacity-60"
+              >
+                {creating ? "Criando..." : "Confirmar Criação"}
+              </button>
+              <button
+                onClick={() => setStep("form")}
+                disabled={creating}
+                className="px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                Voltar
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </Modal>

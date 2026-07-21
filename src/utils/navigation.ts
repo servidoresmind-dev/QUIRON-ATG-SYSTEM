@@ -64,6 +64,10 @@ export function parseHash(hash: string): ParsedRoute {
     return { path: "geradores" };
   }
 
+  if (base === "historico") {
+    return { path: "historico" };
+  }
+
   return { path: "dashboard" };
 }
 

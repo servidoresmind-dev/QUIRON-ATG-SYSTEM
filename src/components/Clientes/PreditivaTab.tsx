@@ -3,6 +3,7 @@ import { AlertTriangle, RefreshCw, Save, Edit3 } from "lucide-react";
 import { GeradorAtg, Preditiva, OxicatalisadorAtg } from "../../types";
 import { supabase } from "../../utils/supabase";
 import { salvarPreditiva } from "../../utils/atgBackend";
+import { registrarLog } from "../../utils/logEdicoes";
 import { formatDate } from "../../utils/date";
 import { toast } from "sonner";
 
@@ -118,6 +119,21 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
     if (saveError) {
       toast.error("Erro ao salvar oxicatalisador.", { description: saveError.message });
       return;
+    }
+
+    // Usa o id da própria linha de oxicatalisador_atg (não o do gerador) — é
+    // essa tabela/id que a reversão (Ajuste #6) vai usar para regravar o valor
+    // anterior. No insert, o id só existe depois do save; por isso lê de `data`.
+    const oxicatalisadorId = (data as { id?: number } | null)?.id ?? oxi?.id;
+    if (oxicatalisadorId) {
+      await registrarLog(
+        "oxicatalisador",
+        oxicatalisadorId,
+        "editou_oxicatalisador",
+        usuario,
+        { possui: oxi?.possui ?? null, bitola: oxi?.bitola ?? null },
+        { possui: payload.possui, bitola: payload.bitola }
+      );
     }
 
     setOxi(data || payload);

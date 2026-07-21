@@ -14,7 +14,8 @@ import { toast } from "sonner";
 
 const WEBHOOK_URLS = {
   buscarAtivo: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-ativo",
-  buscarOs: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-os"
+  buscarOs: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-os",
+  buscarClienteIclass: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-cliente-iclass"
 };
 
 // Toda função de mock devolve esse marcador junto com o resultado, para que a
@@ -184,6 +185,60 @@ export function buscarOs(ativoId: number, codigoOs: string): Promise<BuscarOsRes
       }
     })
   );
+}
+
+// ── Corrigir cadastro iClass: buscar cliente no iClass por código/nome/CNPJ ──
+
+export interface BuscarClienteIclassEncontrado {
+  iclass_id: number;
+  iclass_nome: string;
+  iclass_codigo: string;
+  cnpj: string;
+  email?: string;
+  telefone?: string;
+}
+export interface BuscarClienteIclassResultSucesso extends Mockable {
+  ok: true;
+  total: number;
+  encontrados: BuscarClienteIclassEncontrado[];
+}
+export interface BuscarClienteIclassResultFalha extends Mockable {
+  ok: false;
+  motivo: string;
+}
+export type BuscarClienteIclassResult = BuscarClienteIclassResultSucesso | BuscarClienteIclassResultFalha;
+
+export type CriterioBuscaIclass = "codigo" | "nome" | "cnpj";
+
+export function buscarClienteIclass(
+  criterio: CriterioBuscaIclass,
+  valor: string,
+  clienteId?: number,
+  geradorId?: number
+): Promise<BuscarClienteIclassResult> {
+  const body = {
+    criterio,
+    _busca: {
+      iclassCodigoDireto: criterio === "codigo" ? valor : "",
+      razaoSocial: criterio === "nome" ? valor : "",
+      cnpj: criterio === "cnpj" ? valor : ""
+    },
+    gerador_id: geradorId,
+    cliente_id: clienteId
+  };
+
+  return callWebhook<BuscarClienteIclassResult>(WEBHOOK_URLS.buscarClienteIclass, body, () => ({
+    ok: true,
+    total: 1,
+    encontrados: [
+      {
+        iclass_id: Math.floor(100000000 + Math.random() * 900000000),
+        iclass_nome: "CLIENTE MOCK (backend ainda não responde de forma síncrona)",
+        iclass_codigo: "CTR000000000000 Roteiro: 0",
+        cnpj: ""
+      }
+    ]
+  }));
 }
 
 // ── Fluxo C: criar gerador ──

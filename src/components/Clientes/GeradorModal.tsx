@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { CheckCircle2, Circle } from "lucide-react";
+import { CheckCircle2, Circle, Archive } from "lucide-react";
 import { GeradorAtg } from "../../types";
 import Modal from "../ui/Modal";
 import { validarCadastro } from "../../utils/atgBackend";
+import { supabase } from "../../utils/supabase";
+import { registrarLog } from "../../utils/logEdicoes";
 import { toast } from "sonner";
 import PreditivaTab from "./PreditivaTab";
 import FichaTab from "./FichaTab";
@@ -12,11 +14,14 @@ interface GeradorModalProps {
   usuario: string;
   onClose: () => void;
   onUpdated: (updated: GeradorAtg) => void;
+  onArchived: (geradorId: number) => void;
 }
 
-export default function GeradorModal({ gerador, usuario, onClose, onUpdated }: GeradorModalProps) {
+export default function GeradorModal({ gerador, usuario, onClose, onUpdated, onArchived }: GeradorModalProps) {
   const [tab, setTab] = useState<"preditiva" | "ficha">("preditiva");
   const [validating, setValidating] = useState(false);
+  const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
+  const [arquivando, setArquivando] = useState(false);
 
   const handleValidar = async () => {
     setValidating(true);
@@ -31,6 +36,37 @@ export default function GeradorModal({ gerador, usuario, onClose, onUpdated }: G
     } finally {
       setValidating(false);
     }
+  };
+
+  const handleArquivar = async () => {
+    if (!supabase) return;
+    setArquivando(true);
+
+    const agora = new Date().toISOString();
+    const { error } = await supabase
+      .from("geradores_atg")
+      .update({ arquivado: true, arquivado_por: usuario, arquivado_em: agora })
+      .eq("id", gerador.id);
+
+    setArquivando(false);
+
+    if (error) {
+      toast.error("Erro ao remover gerador.", { description: error.message });
+      return;
+    }
+
+    await registrarLog(
+      "gerador",
+      gerador.id,
+      "arquivou",
+      usuario,
+      { arquivado: false, arquivado_por: null, arquivado_em: null },
+      { arquivado: true, arquivado_por: usuario, arquivado_em: agora }
+    );
+
+    toast.success("Gerador removido (arquivado) com sucesso.");
+    onArchived(gerador.id);
+    onClose();
   };
 
   return (
@@ -75,18 +111,53 @@ export default function GeradorModal({ gerador, usuario, onClose, onUpdated }: G
           </div>
         </div>
 
-        <button
-          onClick={handleValidar}
-          disabled={validating}
-          className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer disabled:opacity-60 ${
-            gerador.validado
-              ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
-              : "bg-brand-500 text-white hover:bg-brand-600"
-          }`}
-        >
-          {gerador.validado ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" />}
-          <span>{gerador.validado ? "Validado (clique para reabrir)" : "Conferido"}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleValidar}
+            disabled={validating}
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer disabled:opacity-60 ${
+              gerador.validado
+                ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                : "bg-brand-500 text-white hover:bg-brand-600"
+            }`}
+          >
+            {gerador.validado ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" />}
+            <span>{gerador.validado ? "Validado (clique para reabrir)" : "Conferido"}</span>
+          </button>
+
+          <button
+            onClick={() => setConfirmandoRemocao(true)}
+            className="px-3.5 py-2 bg-white border border-slate-200 text-rose-600 rounded-xl font-bold text-xs hover:bg-rose-50 transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer"
+          >
+            <Archive className="w-3.5 h-3.5" />
+            <span>Remover Gerador</span>
+          </button>
+        </div>
+
+        {confirmandoRemocao && (
+          <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-semibold text-rose-800">
+              Tem certeza? O gerador será arquivado (não aparecerá mais em nenhuma listagem) e esta ação ficará registrada
+              no histórico. Um administrador pode reverter depois, se necessário.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleArquivar}
+                disabled={arquivando}
+                className="px-3.5 py-2 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                {arquivando ? "Removendo..." : "Sim, remover gerador"}
+              </button>
+              <button
+                onClick={() => setConfirmandoRemocao(false)}
+                disabled={arquivando}
+                className="px-3.5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex bg-slate-100 p-1 rounded-xl w-fit border border-slate-200">
@@ -111,7 +182,7 @@ export default function GeradorModal({ gerador, usuario, onClose, onUpdated }: G
         {tab === "preditiva" ? (
           <PreditivaTab gerador={gerador} usuario={usuario} />
         ) : (
-          <FichaTab gerador={gerador} onUpdated={onUpdated} />
+          <FichaTab gerador={gerador} usuario={usuario} onUpdated={onUpdated} />
         )}
       </div>
     </Modal>

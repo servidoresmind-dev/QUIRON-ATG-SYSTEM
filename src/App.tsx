@@ -25,6 +25,7 @@ import Login from "./pages/Login";
 import ProductList from "./components/Products/ProductList";
 import ServiceList from "./components/Services/ServiceList";
 import Geradores from "./pages/Geradores";
+import Historico from "./pages/Historico";
 
 interface CurrentUser {
   email: string;
@@ -142,6 +143,8 @@ export default function App() {
         return <ServiceList activeRole={activeRole} />;
       case "geradores":
         return <Geradores />;
+      case "historico":
+        return <Historico activeRole={activeRole} currentUserEmail={currentUser?.email || "desconhecido"} />;
       default:
         return <Dashboard />;
     }
