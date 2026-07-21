@@ -15,7 +15,8 @@ import { toast } from "sonner";
 const WEBHOOK_URLS = {
   buscarAtivo: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-ativo",
   buscarOs: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-os",
-  buscarClienteIclass: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-cliente-iclass"
+  buscarClienteIclass: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-cliente-iclass",
+  criarCliente: "https://main-n8n.1smjgn.easypanel.host/webhook/criar-cliente"
 };
 
 // Toda função de mock devolve esse marcador junto com o resultado, para que a
@@ -259,4 +260,89 @@ export function criarGerador(
     { p_omie_cliente_id: omieClienteId, p_ativo_id: ativoId, p_dados: dados, p_usuario: usuario },
     () => ({ ok: true, id: -Math.floor(Math.random() * 1000000) })
   );
+}
+
+// ── Criar Cliente (Omie + iClass) ──
+
+export interface CriarClientePayload {
+  razao_social: string;
+  nome_fantasia: string;
+  cnpj_cpf: string;
+  email: string;
+  telefone_ddd: string;
+  telefone_numero: string;
+  celular: string;
+  endereco: string;
+  endereco_numero: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  cep: string;
+  observacao: string;
+  usuario: string;
+}
+
+// "completo" = tudo certo nos dois sistemas. "iclass_sem_id" = criou nos dois
+// mas o fluxo não conseguiu capturar o id do iClass — tratado como sucesso,
+// só com aviso pra conferir depois via "Corrigir cadastro iClass".
+export interface CriarClienteCompleto extends Mockable {
+  ok: true;
+  status: "completo" | "iclass_sem_id";
+  mensagem: string;
+  codigo_integracao: string;
+  codigo_cliente_omie: number;
+  iclass_id: number | null;
+  iclass_nome: string | null;
+  iclass_codigo: string | null;
+  dados: Record<string, unknown>;
+  omie_ok: boolean;
+  iclass_ok: boolean;
+  usuario: string;
+}
+export interface CriarClienteIclassPendente extends Mockable {
+  ok: true;
+  status: "iclass_pendente";
+  mensagem: string;
+  codigo_cliente_omie: number;
+  iclass_id: null;
+  omie_ok: true;
+  iclass_ok: false;
+  iclass_erro: string;
+  dados: Record<string, unknown>;
+  usuario: string;
+}
+export interface CriarClienteFalhaOmie extends Mockable {
+  ok: false;
+  status: "falha_omie";
+  mensagem: string;
+  omie_erro: string;
+  omie_ok: false;
+}
+export interface CriarClienteCamposFaltando extends Mockable {
+  ok: false;
+  status: "campos_faltando";
+  mensagem?: string;
+  faltando: string[];
+}
+export type CriarClienteResult =
+  | CriarClienteCompleto
+  | CriarClienteIclassPendente
+  | CriarClienteFalhaOmie
+  | CriarClienteCamposFaltando;
+
+export function criarCliente(payload: CriarClientePayload): Promise<CriarClienteResult> {
+  return callWebhook<CriarClienteResult>(WEBHOOK_URLS.criarCliente, payload, () => ({
+    ok: true,
+    status: "completo",
+    mensagem: "Cliente criado com sucesso nos dois sistemas. (simulado — backend ainda não responde de forma síncrona)",
+    codigo_integracao: `ATG_${payload.cnpj_cpf.replace(/\D/g, "")}`,
+    codigo_cliente_omie: Math.floor(1000000000 + Math.random() * 9000000000),
+    iclass_id: Math.floor(100000000 + Math.random() * 900000000),
+    iclass_nome: payload.razao_social,
+    iclass_codigo: "CLIENTE_MOCK",
+    dados: payload as unknown as Record<string, unknown>,
+    omie_ok: true,
+    iclass_ok: true,
+    usuario: payload.usuario
+  }));
 }

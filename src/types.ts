@@ -181,9 +181,10 @@ export interface ClienteCard {
   primeiro_gerador: string | null;
   estado: EstadoClienteCard;
   // Mesclados a partir de omie_clientes após o fetch da view — ver Clientes.tsx
-  // (a view vw_cliente_card não expõe essas duas colunas).
+  // (a view vw_cliente_card não expõe essas colunas).
   inativo: boolean;
   iclass_nome: string | null;
+  iclass_pendente: boolean;
 }
 
 export interface OmieClienteDetalhe {

@@ -16,7 +16,8 @@ import {
   Plus,
   Eye,
   Edit3,
-  Ban
+  Ban,
+  UserPlus
 } from "lucide-react";
 import { ClienteCard, GeradorAtg, EstadoClienteCard, PerfilUsuario } from "../types";
 import { supabase, isSupabaseConfigured } from "../utils/supabase";
@@ -26,6 +27,7 @@ import EmptyState from "../components/ui/EmptyState";
 import GeradorModal from "../components/Clientes/GeradorModal";
 import AdicionarGeradorWizard from "../components/Clientes/AdicionarGeradorWizard";
 import CorrigirIclassWizard from "../components/Clientes/CorrigirIclassWizard";
+import CriarClienteWizard from "../components/Clientes/CriarClienteWizard";
 import { validarCadastro } from "../utils/atgBackend";
 import { registrarLog } from "../utils/logEdicoes";
 
@@ -64,6 +66,8 @@ export default function Clientes({ activeRole }: ClientesProps) {
   // Os dados do Omie nunca são editados aqui — só os do iClass, via busca no webhook.
   const [correctingIclassFor, setCorrectingIclassFor] = useState<ClienteCard | null>(null);
 
+  const [creatingCliente, setCreatingCliente] = useState(false);
+
   const fetchClientes = async () => {
     setLoading(true);
     setError(null);
@@ -86,11 +90,11 @@ export default function Clientes({ activeRole }: ClientesProps) {
       return;
     }
 
-    // A view não traz "inativo" nem "iclass_nome" — busca à parte em
-    // omie_clientes (1 query só, não uma por card) e mescla localmente.
+    // A view não traz "inativo", "iclass_nome" nem "iclass_pendente" — busca
+    // à parte em omie_clientes (1 query só, não uma por card) e mescla localmente.
     const { data: statusData, error: statusError } = await supabase
       .from("omie_clientes")
-      .select("id, inativo, iclass_nome");
+      .select("id, inativo, iclass_nome, iclass_pendente");
 
     if (statusError) {
       console.warn("Não foi possível carregar o status ativo/inativo dos clientes.", statusError.message);
@@ -101,7 +105,8 @@ export default function Clientes({ activeRole }: ClientesProps) {
       (data || []).map((c) => ({
         ...c,
         inativo: Boolean(extraById.get(c.id)?.inativo),
-        iclass_nome: extraById.get(c.id)?.iclass_nome ?? null
+        iclass_nome: extraById.get(c.id)?.iclass_nome ?? null,
+        iclass_pendente: Boolean(extraById.get(c.id)?.iclass_pendente)
       }))
     );
 
@@ -291,6 +296,13 @@ export default function Clientes({ activeRole }: ClientesProps) {
             Revise, corrija e valide os cadastros de clientes, geradores e fichas de levantamento.
           </p>
         </div>
+        <button
+          onClick={() => setCreatingCliente(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-brand-500 text-white rounded-xl font-bold text-xs hover:bg-brand-600 transition-colors shadow-soft cursor-pointer shrink-0"
+        >
+          <UserPlus className="w-4 h-4" />
+          <span>Novo Cliente</span>
+        </button>
       </div>
 
       <FilterBar
@@ -362,6 +374,11 @@ export default function Clientes({ activeRole }: ClientesProps) {
                       {cliente.inativo && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-100 text-slate-500 border-slate-200">
                           Inativo
+                        </span>
+                      )}
+                      {cliente.iclass_pendente && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-700 border-amber-100">
+                          Pendente iClass
                         </span>
                       )}
                     </div>
@@ -572,6 +589,14 @@ export default function Clientes({ activeRole }: ClientesProps) {
           usuario={currentUserEmail}
           onClose={() => setCorrectingIclassFor(null)}
           onSaved={fetchClientes}
+        />
+      )}
+
+      {creatingCliente && (
+        <CriarClienteWizard
+          usuario={currentUserEmail}
+          onClose={() => setCreatingCliente(false)}
+          onCreated={fetchClientes}
         />
       )}
     </div>

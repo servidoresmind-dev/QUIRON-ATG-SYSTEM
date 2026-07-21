@@ -390,6 +390,70 @@ depois restaurado ao estado original):**
 
 Os itens 5 e 6 estão concluídos de ponta a ponta (front + banco).
 
+---
+
+## Ajuste extra — Criar Cliente (Omie + iClass)
+
+Implementado a partir do documento "Criar Cliente (Omie + iClass) —
+Orientação Frontend + Banco", enviado à parte.
+
+- **Botão "Novo Cliente"** no topo da página Clientes (`Clientes.tsx`), aberto
+  para qualquer usuário com acesso à página (mesmo padrão do "Adicionar
+  Gerador" — não é admin-only, o documento não pediu restrição de perfil).
+- Componente novo: `src/components/Clientes/CriarClienteWizard.tsx` — um
+  formulário só, todos os campos obrigatórios exceto Observação (validação no
+  front antes de chamar o webhook, e também trata o `campos_faltando` que o
+  fluxo devolve, destacando os campos em vermelho).
+- `src/utils/atgBackend.ts`: novo `criarCliente()`, chama `POST
+  /webhook/criar-cliente`. **Testei o webhook ao vivo nesta sessão** (chamada
+  vazia) e ele já responde de forma síncrona com o contrato exato do
+  documento (`{"ok":false,"status":"campos_faltando","faltando":[...]}`) — não
+  está mais no modo assíncrono antigo, então não deveria cair no mock na
+  prática.
+- Trata os 4 cenários do documento, mais o `iclass_sem_id` mencionado no
+  resumo:
+  - `completo` → grava tudo em `omie_clientes`, toast verde.
+  - `iclass_sem_id` → grava tudo (Omie + o que veio do iClass), toast âmbar
+    avisando para conferir e completar o ID via "Corrigir cadastro iClass".
+  - `iclass_pendente` → grava só os dados do Omie (`codigo_omie`), com os
+    campos de iClass nulos e `iclass_pendente = true`; toast âmbar "finalize
+    manualmente no iClass". **O dado do Omie nunca é perdido**, como pedido.
+  - `falha_omie` → não grava nada no banco, mensagem vermelha, formulário
+    continua preenchido para tentar de novo.
+  - `campos_faltando` → não chama o banco, destaca os campos que faltam.
+- **Card do cliente**: badge âmbar "Pendente iClass" ao lado do badge de
+  estado, quando `iclass_pendente = true`.
+- **Log**: toda criação bem-sucedida (completo/iclass_sem_id/iclass_pendente)
+  grava em `log_edicoes` via `registrarLog()`, com `acao = 'criou_cliente'` (ou
+  `'criou_cliente_iclass_pendente'` no caso 3b) e `valor_antes = null` (é
+  criação — por isso não aparece botão "Reverter" para essas linhas no
+  Histórico; desfazer uma criação seria um delete, que o sistema
+  deliberadamente não tem, ver Auditoria-Quiron.md).
+- **Campos do formulário que não são gravados no nosso banco**: email,
+  telefones, endereço, cidade, estado, CEP, observação — o documento só pediu
+  para gravar em `omie_clientes` os campos de identificação/match (razão
+  social, nome fantasia, CNPJ, código Omie, dados do iClass). O resto só vai
+  para o Omie/iClass via webhook, não fica duplicado aqui.
+
+### SQL pendente — mais uma coluna em `omie_clientes`
+
+Confirmei ao vivo que a coluna ainda não existe. Rodar no SQL Editor do
+Supabase Studio:
+
+```sql
+alter table omie_clientes
+  add column if not exists iclass_pendente boolean not null default false;
+```
+
+Sem isso, a página de Clientes quebra ao carregar — não só a criação de
+cliente. Isso acontece porque o front já busca `iclass_pendente` na mesma
+query que já buscava `inativo` e `iclass_nome` (é uma query só, mais barata
+que uma por card); se uma coluna dessa consulta não existe, a consulta
+inteira falha. **Recomendo rodar esse SQL antes do próximo deploy**, mesmo
+que a criação de cliente ainda não vá ser testada — senão a página de
+Clientes para de carregar o status ativo/inativo e o nome iClass que já
+funcionavam.
+
 ### Não testado em navegador
 
 Rodei `tsc --noEmit` e `vite build` (ambos limpos), subi o dev server para
