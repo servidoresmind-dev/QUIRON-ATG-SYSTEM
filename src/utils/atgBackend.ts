@@ -280,9 +280,12 @@ export function buscarAtivoPorOs(codigoOs: string): Promise<BuscarAtivoPorOsResu
 
 // ── Fluxo C: criar gerador ──
 
+// A RPC `criar_gerador` retorna o tipo `geradores_atg` (a linha inteira que
+// acabou de ser criada), não um envelope {ok, id} — confirmado ao vivo via
+// pg_get_function_result(). Sucesso é reconhecido pela presença de um `id`
+// numérico na resposta, não por um campo `ok`.
 export interface CriarGeradorResult extends Mockable {
-  ok: boolean;
-  id?: number;
+  id: number;
 }
 
 export function criarGerador(
@@ -294,7 +297,7 @@ export function criarGerador(
   return callRpc<CriarGeradorResult>(
     "criar_gerador",
     { p_omie_cliente_id: omieClienteId, p_ativo_id: ativoId, p_dados: dados, p_usuario: usuario },
-    () => ({ ok: true, id: -Math.floor(Math.random() * 1000000) })
+    () => ({ id: -Math.floor(Math.random() * 1000000) })
   );
 }
 

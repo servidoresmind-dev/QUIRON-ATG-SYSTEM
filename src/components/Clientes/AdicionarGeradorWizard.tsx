@@ -141,10 +141,12 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
       };
 
       const result = await criarGerador(cliente.id, ativo.ativo_id, dados, usuario);
-      if (!result.ok) throw new Error("A criação não foi confirmada pelo backend.");
+      if (!result || typeof result.id !== "number") {
+        throw new Error("A criação não foi confirmada pelo backend.");
+      }
 
       const novo: GeradorAtg = {
-        id: result.id ?? -Date.now(),
+        id: result.id,
         omie_cliente_id: cliente.id,
         nome_fantasia: cliente.nome_fantasia,
         razao_social: cliente.razao_social,

@@ -666,6 +666,50 @@ razão do ajuste anterior — exclusão real de cliente em produção).
 
 ---
 
+## Correção de bug — "Adicionar Gerador" dava erro mesmo criando com sucesso
+
+**Reportado em produção pelo Douglas (30/07/2026, ~14:48–15:02)**: ao tentar
+cadastrar um gerador (cliente "707 AUTO-SERVICO DE ALIMENTOS LTDA"), o front
+sempre mostrava *"Erro ao criar gerador. A criação não foi confirmada pelo
+backend."* — mas, ao investigar (logs do Supabase + consulta direta na
+tabela), descobrimos que **a criação estava funcionando toda vez**. O Douglas
+tentou de novo várias vezes pensando que tinha falhado, o que gerou **4
+linhas duplicadas** do mesmo ativo (`geradores_atg.id` 489, 490, 491, 492 —
+`ativo_id 117331192`, cliente `omie_cliente_id 747`).
+
+**Causa raiz**: a RPC `criar_gerador` **retorna o tipo `geradores_atg`** (a
+linha inteira recém-criada), confirmado ao vivo via
+`pg_get_function_result()` no SQL Editor — não um envelope `{ok, id}` como o
+front esperava desde que essa RPC ainda nem existia de verdade (o
+`atgBackend.ts` original foi escrito antes da RPC existir, com um contrato
+adivinhado). Como a resposta real não tem campo `ok`, `result.ok` sempre
+dava `undefined`/falso, e o front achava que tinha falhado mesmo com o
+`insert` acontecendo normalmente no banco.
+
+**Correção** (`src/utils/atgBackend.ts`, `AdicionarGeradorWizard.tsx`,
+`AdicionarGeradorPorOsWizard.tsx`): `CriarGeradorResult` agora reflete o
+retorno real (`{id: number, ...resto da linha}`), e o sucesso passa a ser
+checado por `typeof result.id === "number"` em vez de `result.ok`. Afeta os
+dois fluxos de criação de gerador (por série/patrimônio e por O.S.), já que
+os dois chamam a mesma `criarGerador()`.
+
+**Pendência para você**: as 4 linhas duplicadas continuam no banco (o bug
+era só na mensagem de erro do front, os dados gravados estão corretos). Depois
+que essa correção subir, recomendo excluir 3 das 4 pela própria tela (botão
+"Excluir Gerador", que já fica registrado no Histórico) — sugiro manter a
+mais recente (**id 492**) e excluir 489, 490 e 491.
+
+### Não testado em navegador
+
+`tsc --noEmit` e `vite build` rodam limpos. A causa raiz foi confirmada via
+consulta direta no banco (as 4 linhas duplicadas provam que a RPC sempre
+teve sucesso) e via `pg_get_function_result()` (confirma o tipo de retorno
+real da função) — não precisei recriar o erro eu mesmo. Recomendo pedir pro
+Douglas testar de novo assim que subir, só pra confirmar visualmente que a
+mensagem de sucesso aparece agora.
+
+---
+
 ### Não testado em navegador (ajustes 1-6 originais)
 
 Rodei `tsc --noEmit` e `vite build` (ambos limpos), subi o dev server para
