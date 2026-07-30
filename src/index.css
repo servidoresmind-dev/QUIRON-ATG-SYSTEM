@@ -69,3 +69,34 @@ body {
   background: #94a3b8;
 }
 
+/* Rolagem discreta do menu lateral — bem fina, quase invisível, sem barra
+   horizontal (o menu só precisa rolar verticalmente).
+   Chrome/Edge recentes suportam scrollbar-width/scrollbar-color e, quando
+   presentes, ignoram a largura em pixel do ::-webkit-scrollbar — por isso
+   as duas abordagens ficam isoladas por @supports: Chrome usa só a regra
+   antiga (que aceita pixel exato), Firefox usa só a nova (que não aceita). */
+.sidebar-nav-scroll::-webkit-scrollbar {
+  width: 1px;
+  height: 0;
+}
+
+.sidebar-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+}
+
+.sidebar-nav-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .sidebar-nav-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+  }
+}
+
