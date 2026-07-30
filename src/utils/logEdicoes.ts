@@ -19,7 +19,9 @@ export const TABELA_POR_ENTIDADE: Record<string, string> = {
   cliente: "omie_clientes",
   gerador: "geradores_atg",
   ficha: "geradores_atg",
-  oxicatalisador: "oxicatalisador_atg"
+  oxicatalisador: "oxicatalisador_atg",
+  // Tabela legada da página antiga "Geradores" — separada de geradores_atg.
+  gerador_legado: "geradores"
 };
 
 export async function registrarLog(

@@ -1,92 +1,49 @@
 import React, { useState } from "react";
-import { AlertTriangle, CheckCircle2, Search, Ban } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Search } from "lucide-react";
 import { ClienteCard, GeradorAtg } from "../../types";
 import Modal from "../ui/Modal";
 import {
-  buscarAtivo,
+  buscarAtivoPorOs,
   criarGerador,
-  BuscarAtivoResultSucesso,
-  BuscarAtivoResultFalha,
+  BuscarAtivoPorOsResultSucesso,
+  BuscarAtivoPorOsResultFalha,
   classificarErroWebhook,
   TipoErroWebhook
 } from "../../utils/atgBackend";
 import { toast } from "sonner";
 
-interface AdicionarGeradorWizardProps {
+interface AdicionarGeradorPorOsWizardProps {
   cliente: ClienteCard;
   usuario: string;
   onClose: () => void;
   onCreated: (novo: GeradorAtg) => void;
 }
 
-type Step = "serie" | "patrimonio" | "bloqueado" | "multiplos" | "form" | "revisao";
+type Step = "os" | "multiplos" | "form" | "revisao";
 
-export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCreated }: AdicionarGeradorWizardProps) {
-  const [step, setStep] = useState<Step>("serie");
-  const [valor, setValor] = useState("");
+export default function AdicionarGeradorPorOsWizard({ cliente, usuario, onClose, onCreated }: AdicionarGeradorPorOsWizardProps) {
+  const [step, setStep] = useState<Step>("os");
+  const [codigoOs, setCodigoOs] = useState("");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<{ tipo: TipoErroWebhook; mensagem: string } | null>(null);
   const [opcoes, setOpcoes] = useState<{ ativo_id: number; descricao: string }[]>([]);
-  const [ativo, setAtivo] = useState<BuscarAtivoResultSucesso | null>(null);
+  const [ativo, setAtivo] = useState<BuscarAtivoPorOsResultSucesso | null>(null);
 
   const [formFabricante, setFormFabricante] = useState("");
   const [formModelo, setFormModelo] = useState("");
   const [formNumSerie, setFormNumSerie] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const handleBuscarSerie = async (e: React.FormEvent) => {
+  const handleBuscarOs = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!valor.trim()) {
-      toast.error("Digite o número de série.");
+    if (!codigoOs.trim()) {
+      toast.error("Digite o número da O.S.");
       return;
     }
 
     setLoading(true);
     setErro(null);
-    const numSerie = valor.trim();
-    const result = await buscarAtivo("serialNumber", numSerie);
-    setLoading(false);
-
-    if (result.ok && "multiplos" in result && result.multiplos) {
-      setOpcoes(result.opcoes);
-      setFormNumSerie(numSerie);
-      setStep("multiplos");
-      return;
-    }
-
-    if (result.ok) {
-      setAtivo(result as BuscarAtivoResultSucesso);
-      setFormFabricante((result as BuscarAtivoResultSucesso).fabricante);
-      setFormModelo((result as BuscarAtivoResultSucesso).modelo);
-      setFormNumSerie(numSerie);
-      setStep("form");
-      return;
-    }
-
-    const classificado = classificarErroWebhook((result as BuscarAtivoResultFalha).motivo, "");
-    if (classificado.tipo !== "outro") {
-      // Sobrecarga ou falha de comunicação — não é "não encontrado", fica na
-      // mesma etapa pro usuário tentar de novo em vez de avançar.
-      setErro(classificado);
-      return;
-    }
-
-    // Não encontrado de verdade pela série — tenta patrimônio a seguir
-    setValor("");
-    setStep("patrimonio");
-  };
-
-  const handleBuscarPatrimonio = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!valor.trim()) {
-      toast.error("Digite o número de patrimônio.");
-      return;
-    }
-
-    setLoading(true);
-    setErro(null);
-    const numPatrimonio = valor.trim();
-    const result = await buscarAtivo("patrimony", numPatrimonio);
+    const result = await buscarAtivoPorOs(codigoOs.trim());
     setLoading(false);
 
     if (result.ok && "multiplos" in result && result.multiplos) {
@@ -96,21 +53,21 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
     }
 
     if (result.ok) {
-      setAtivo(result as BuscarAtivoResultSucesso);
-      setFormFabricante((result as BuscarAtivoResultSucesso).fabricante);
-      setFormModelo((result as BuscarAtivoResultSucesso).modelo);
+      const sucesso = result as BuscarAtivoPorOsResultSucesso;
+      setAtivo(sucesso);
+      setFormFabricante(sucesso.fabricante || "");
+      setFormModelo(sucesso.modelo || "");
+      setFormNumSerie(sucesso.num_serie || "");
       setStep("form");
       return;
     }
 
-    const classificado = classificarErroWebhook((result as BuscarAtivoResultFalha).motivo, "");
-    if (classificado.tipo !== "outro") {
-      setErro(classificado);
-      return;
-    }
-
-    // Não encontrado de novo — bloqueia
-    setStep("bloqueado");
+    setErro(
+      classificarErroWebhook(
+        (result as BuscarAtivoPorOsResultFalha).motivo,
+        "Nenhum ativo encontrado para esse número de O.S. Confira o código e tente novamente."
+      )
+    );
   };
 
   const handleEscolherOpcao = (opcao: { ativo_id: number; descricao: string }) => {
@@ -124,6 +81,7 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
     });
     setFormFabricante("");
     setFormModelo("");
+    setFormNumSerie("");
     setStep("form");
   };
 
@@ -189,18 +147,18 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
   };
 
   return (
-    <Modal id="adicionar-gerador-modal" isOpen={true} onClose={onClose} title={`Adicionar Gerador — ${cliente.razao_social}`}>
+    <Modal id="adicionar-gerador-por-os-modal" isOpen={true} onClose={onClose} title={`Adicionar Gerador por O.S. — ${cliente.razao_social}`}>
       <div className="space-y-4">
-        {step === "serie" && (
-          <form onSubmit={handleBuscarSerie} className="space-y-3">
-            <p className="text-xs text-slate-500">Digite o número de série do gerador para localizá-lo no iClass.</p>
+        {step === "os" && (
+          <form onSubmit={handleBuscarOs} className="space-y-3">
+            <p className="text-xs text-slate-500">Digite o número da O.S. para localizar o ativo vinculado a ela no iClass.</p>
             <div className="flex gap-2">
               <input
                 autoFocus
                 type="text"
-                value={valor}
-                onChange={(e) => setValor(e.target.value)}
-                placeholder="Número de série"
+                value={codigoOs}
+                onChange={(e) => setCodigoOs(e.target.value)}
+                placeholder="Ex: OS-12345"
                 disabled={loading}
                 className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
@@ -216,12 +174,14 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
           </form>
         )}
 
-        {erro && (step === "serie" || step === "patrimonio") && (
+        {erro && step === "os" && (
           <div
             className={`border text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2 ${
               erro.tipo === "comunicacao"
                 ? "bg-red-50 border-red-100 text-red-700"
-                : "bg-amber-50 border-amber-100 text-amber-800"
+                : erro.tipo === "rate_limit"
+                ? "bg-amber-50 border-amber-100 text-amber-800"
+                : "bg-red-50 border-red-100 text-red-700"
             }`}
           >
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -229,47 +189,9 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
           </div>
         )}
 
-        {step === "patrimonio" && (
-          <form onSubmit={handleBuscarPatrimonio} className="space-y-3">
-            <div className="bg-amber-50 border border-amber-100 text-amber-800 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>Não encontrado por número de série. Tente pelo número de patrimônio.</span>
-            </div>
-            <div className="flex gap-2">
-              <input
-                autoFocus
-                type="text"
-                value={valor}
-                onChange={(e) => setValor(e.target.value)}
-                placeholder="Número de patrimônio"
-                disabled={loading}
-                className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500"
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-4 py-2 bg-brand-500 text-white rounded-xl font-semibold text-xs hover:bg-brand-600 transition-colors shadow-soft cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
-              >
-                <Search className="w-3.5 h-3.5" />
-                {loading ? "Buscando..." : "Buscar"}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {step === "bloqueado" && (
-          <div className="text-center py-6">
-            <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-rose-100">
-              <Ban className="w-6 h-6" />
-            </div>
-            <h3 className="text-sm font-bold text-slate-800">Ativo não cadastrado no iClass</h3>
-            <p className="text-xs text-slate-500 mt-1">Cadastre o ativo no iClass primeiro antes de vinculá-lo aqui.</p>
-          </div>
-        )}
-
         {step === "multiplos" && (
           <div className="space-y-3">
-            <p className="text-xs text-slate-500">O iClass encontrou múltiplos ativos. Selecione o correto:</p>
+            <p className="text-xs text-slate-500">Essa O.S. tem múltiplos ativos vinculados. Selecione o correto:</p>
             <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl max-h-64 overflow-y-auto">
               {opcoes.map((opcao) => (
                 <button
@@ -345,6 +267,7 @@ export default function AdicionarGeradorWizard({ cliente, usuario, onClose, onCr
             </div>
 
             <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-2 text-xs">
+              <p><span className="text-slate-400">O.S.:</span> <span className="font-mono font-semibold text-slate-700">{codigoOs.trim() || "—"}</span></p>
               <p><span className="text-slate-400">Fabricante:</span> <span className="font-semibold text-slate-700">{formFabricante || "—"}</span></p>
               <p><span className="text-slate-400">Modelo:</span> <span className="font-semibold text-slate-700">{formModelo || "—"}</span></p>
               <p><span className="text-slate-400">Número de Série:</span> <span className="font-mono font-semibold text-slate-700">{formNumSerie || "—"}</span></p>

@@ -1,13 +1,16 @@
 // Integração com o backend do SaaS Preditivas ATG (RPCs Supabase + webhooks n8n)
 // descrito em "Orientação Frontend.md".
 //
-// As 3 RPCs ainda não existem no Supabase (confirmado: retornam PGRST202) e os
-// webhooks n8n ainda respondem apenas com o ack assíncrono padrão do n8n
-// ({"message":"Workflow was started"}), não com o contrato síncrono documentado.
-// Por isso: sempre tentamos a chamada real primeiro; se o backend ainda não
-// responder no formato esperado, caímos automaticamente numa resposta mockada
-// para manter o fluxo testável. Assim que o backend for concluído, a troca é
-// automática — nenhuma alteração de código é necessária aqui.
+// As 3 RPCs ainda não existem no Supabase (confirmado: retornam PGRST202) —
+// pra essas, ainda usamos uma resposta mockada como fallback, marcada com
+// _mocked:true, pra manter o fluxo testável enquanto o backend não é concluído.
+//
+// Os webhooks n8n (buscar-ativo, buscar-os, buscar-cliente-iclass, criar-cliente)
+// já são reais e síncronos em produção — por isso NÃO caem mais em mock quando
+// falham. Se o webhook não responder (rede fora do ar, URL errada, n8n
+// desligado) ou responder num formato inesperado, o resultado é um erro
+// explícito (motivo/status "erro_comunicacao"), pra UI avisar o usuário e
+// pedir pra tentar de novo — nunca fingir sucesso com dado falso.
 
 import { supabase } from "./supabase";
 import { toast } from "sonner";
@@ -16,7 +19,8 @@ const WEBHOOK_URLS = {
   buscarAtivo: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-ativo",
   buscarOs: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-os",
   buscarClienteIclass: "https://main-n8n.1smjgn.easypanel.host/webhook/buscar-cliente-iclass",
-  criarCliente: "https://main-n8n.1smjgn.easypanel.host/webhook/criar-cliente"
+  criarCliente: "https://main-n8n.1smjgn.easypanel.host/webhook/criar-cliente",
+  buscarAtivoPorOs: "https://main-n8n.1smjgn.easypanel.host/webhook/gerador-por-os"
 };
 
 // Toda função de mock devolve esse marcador junto com o resultado, para que a
@@ -54,10 +58,13 @@ export async function callRpc<T extends Mockable>(
   throw error;
 }
 
+// Webhooks já são reais — em falha, devolve um erro explícito (nunca mock).
+// `erroComunicacao` monta o objeto de falha no formato específico de cada
+// endpoint (uns usam `motivo`, o de criar-cliente usa `status`).
 async function callWebhook<T extends { ok: boolean } & Mockable>(
   url: string,
   body: unknown,
-  mockResponse: () => T
+  erroComunicacao: () => T
 ): Promise<T> {
   let json: any = null;
   try {
@@ -68,18 +75,39 @@ async function callWebhook<T extends { ok: boolean } & Mockable>(
     });
     json = await response.json().catch(() => null);
   } catch (err) {
-    console.warn(`[mock] Falha ao chamar webhook "${url}" — usando resposta simulada.`, err);
+    console.error(`Falha de rede ao chamar webhook "${url}".`, err);
   }
 
   if (json && typeof json === "object" && "ok" in json) {
     return json as T;
   }
 
-  warnMocked(
-    `O webhook foi disparado e o workflow do n8n iniciou, mas ele ainda não responde com o resultado da busca (só o ack padrão "Workflow was started"). Usando resposta simulada até o nó "Respond to Webhook" ser configurado.`
-  );
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  return { ...mockResponse(), _mocked: true };
+  console.error(`Webhook "${url}" não respondeu no formato esperado.`, json);
+  return erroComunicacao();
+}
+
+// Classifica um `motivo`/`status` de falha de webhook nos 2 casos genéricos
+// (sobrecarga do iClass, falha de comunicação) ou devolve a mensagem padrão
+// específica de quem chamou (ex: "cliente não encontrado").
+export type TipoErroWebhook = "rate_limit" | "comunicacao" | "outro";
+
+export function classificarErroWebhook(
+  motivoOuStatus: string | undefined,
+  mensagemPadrao: string
+): { tipo: TipoErroWebhook; mensagem: string } {
+  if (motivoOuStatus === "rate_limit_excedido") {
+    return {
+      tipo: "rate_limit",
+      mensagem: "O sistema do iClass está sobrecarregado no momento. Aguarde alguns instantes e tente novamente."
+    };
+  }
+  if (motivoOuStatus === "erro_comunicacao") {
+    return {
+      tipo: "comunicacao",
+      mensagem: "Não foi possível se comunicar com o servidor. Tente novamente."
+    };
+  }
+  return { tipo: "outro", mensagem: mensagemPadrao };
 }
 
 // ── Fluxo A: validar cadastro ──
@@ -142,12 +170,8 @@ export type BuscarAtivoResult = BuscarAtivoResultSucesso | BuscarAtivoResultMult
 
 export function buscarAtivo(por: "serialNumber" | "patrimony", valor: string): Promise<BuscarAtivoResult> {
   return callWebhook<BuscarAtivoResult>(WEBHOOK_URLS.buscarAtivo, { por, valor }, () => ({
-    ok: true,
-    ativo_id: Math.floor(100000000 + Math.random() * 900000000),
-    descricao: "GRUPO GERADOR - MOCK (backend ainda não responde de forma síncrona)",
-    fabricante: "STEMAC",
-    modelo: "GR200",
-    status_ativo: "ATIVO"
+    ok: false,
+    motivo: "erro_comunicacao"
   }));
 }
 
@@ -169,22 +193,7 @@ export function buscarOs(ativoId: number, codigoOs: string): Promise<BuscarOsRes
   return callWebhook<BuscarOsResult>(
     WEBHOOK_URLS.buscarOs,
     { ativo_id: ativoId, codigo_os: codigoOs },
-    () => ({
-      ok: true,
-      codigo_os: codigoOs,
-      checklist_pesquisa_id: Math.floor(1000 + Math.random() * 9000),
-      ficha_levantamento: {
-        motor: { modelo: "", num_serie: "", fabricante: "" },
-        bateria: { quantidade: "", capacidade_ah: "" },
-        filtros: {},
-        gerador: {},
-        alternador: {},
-        mangueiras: {},
-        controlador: {},
-        escapamento: {},
-        bomba_injetora: {}
-      }
-    })
+    () => ({ ok: false, motivo: "erro_comunicacao" })
   );
 }
 
@@ -229,17 +238,44 @@ export function buscarClienteIclass(
   };
 
   return callWebhook<BuscarClienteIclassResult>(WEBHOOK_URLS.buscarClienteIclass, body, () => ({
-    ok: true,
-    total: 1,
-    encontrados: [
-      {
-        iclass_id: Math.floor(100000000 + Math.random() * 900000000),
-        iclass_nome: "CLIENTE MOCK (backend ainda não responde de forma síncrona)",
-        iclass_codigo: "CTR000000000000 Roteiro: 0",
-        cnpj: ""
-      }
-    ]
+    ok: false,
+    motivo: "erro_comunicacao"
   }));
+}
+
+// ── Fluxo C.2: buscar ativo pelo número da O.S. (pra "Adicionar Gerador pelo
+// número da O.S."). Webhook dedicado e ainda não criado — usa WEBHOOK_URLS.
+// buscarAtivoPorOs, que é um placeholder até o link real ser enviado. ──
+
+export interface BuscarAtivoPorOsResultSucesso extends Mockable {
+  ok: true;
+  ativo_id: number;
+  descricao: string;
+  fabricante: string;
+  modelo: string;
+  status_ativo: string;
+  num_serie?: string;
+}
+export interface BuscarAtivoPorOsResultMultiplos {
+  ok: true;
+  multiplos: true;
+  opcoes: { ativo_id: number; descricao: string }[];
+}
+export interface BuscarAtivoPorOsResultFalha {
+  ok: false;
+  motivo: string;
+}
+export type BuscarAtivoPorOsResult =
+  | BuscarAtivoPorOsResultSucesso
+  | BuscarAtivoPorOsResultMultiplos
+  | BuscarAtivoPorOsResultFalha;
+
+export function buscarAtivoPorOs(codigoOs: string): Promise<BuscarAtivoPorOsResult> {
+  return callWebhook<BuscarAtivoPorOsResult>(
+    WEBHOOK_URLS.buscarAtivoPorOs,
+    { codigo_os: codigoOs },
+    () => ({ ok: false, motivo: "erro_comunicacao" })
+  );
 }
 
 // ── Fluxo C: criar gerador ──
@@ -324,25 +360,24 @@ export interface CriarClienteCamposFaltando extends Mockable {
   mensagem?: string;
   faltando: string[];
 }
+// Sobrecarga do iClass (rate limit de 25 req/min) ou falha de comunicação
+// com o webhook — nenhum dos dois sistemas chegou a ser tocado.
+export interface CriarClienteRateLimitOuErro extends Mockable {
+  ok: false;
+  status: "rate_limit_excedido" | "erro_comunicacao";
+  mensagem: string;
+}
 export type CriarClienteResult =
   | CriarClienteCompleto
   | CriarClienteIclassPendente
   | CriarClienteFalhaOmie
-  | CriarClienteCamposFaltando;
+  | CriarClienteCamposFaltando
+  | CriarClienteRateLimitOuErro;
 
 export function criarCliente(payload: CriarClientePayload): Promise<CriarClienteResult> {
   return callWebhook<CriarClienteResult>(WEBHOOK_URLS.criarCliente, payload, () => ({
-    ok: true,
-    status: "completo",
-    mensagem: "Cliente criado com sucesso nos dois sistemas. (simulado — backend ainda não responde de forma síncrona)",
-    codigo_integracao: `ATG_${payload.cnpj_cpf.replace(/\D/g, "")}`,
-    codigo_cliente_omie: Math.floor(1000000000 + Math.random() * 9000000000),
-    iclass_id: Math.floor(100000000 + Math.random() * 900000000),
-    iclass_nome: payload.razao_social,
-    iclass_codigo: "CLIENTE_MOCK",
-    dados: payload as unknown as Record<string, unknown>,
-    omie_ok: true,
-    iclass_ok: true,
-    usuario: payload.usuario
+    ok: false,
+    status: "erro_comunicacao",
+    mensagem: "Não foi possível se comunicar com o servidor. Tente novamente."
   }));
 }

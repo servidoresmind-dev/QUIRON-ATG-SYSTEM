@@ -2,7 +2,14 @@ import React, { useState } from "react";
 import { AlertTriangle, CheckCircle2, Search } from "lucide-react";
 import { ClienteCard } from "../../types";
 import Modal from "../ui/Modal";
-import { buscarClienteIclass, BuscarClienteIclassEncontrado, CriterioBuscaIclass } from "../../utils/atgBackend";
+import {
+  buscarClienteIclass,
+  BuscarClienteIclassEncontrado,
+  BuscarClienteIclassResultFalha,
+  CriterioBuscaIclass,
+  classificarErroWebhook,
+  TipoErroWebhook
+} from "../../utils/atgBackend";
 import { supabase } from "../../utils/supabase";
 import { registrarLog } from "../../utils/logEdicoes";
 import { toast } from "sonner";
@@ -24,7 +31,7 @@ export default function CorrigirIclassWizard({ cliente, usuario, onClose, onSave
   const [criterio, setCriterio] = useState<CriterioBuscaIclass>("codigo");
   const [valor, setValor] = useState("");
   const [loading, setLoading] = useState(false);
-  const [naoEncontrado, setNaoEncontrado] = useState(false);
+  const [erro, setErro] = useState<{ tipo: TipoErroWebhook; mensagem: string } | null>(null);
   const [opcoes, setOpcoes] = useState<BuscarClienteIclassEncontrado[]>([]);
   const [selecionado, setSelecionado] = useState<BuscarClienteIclassEncontrado | null>(null);
   const [saving, setSaving] = useState(false);
@@ -39,7 +46,7 @@ export default function CorrigirIclassWizard({ cliente, usuario, onClose, onSave
     }
 
     setLoading(true);
-    setNaoEncontrado(false);
+    setErro(null);
     setOpcoes([]);
     setSelecionado(null);
 
@@ -47,7 +54,12 @@ export default function CorrigirIclassWizard({ cliente, usuario, onClose, onSave
     setLoading(false);
 
     if (!result.ok) {
-      setNaoEncontrado(true);
+      setErro(
+        classificarErroWebhook(
+          (result as BuscarClienteIclassResultFalha).motivo,
+          "Cliente não localizado no iClass. Tente outro método de busca ou confira se o preenchimento está exatamente igual ao iClass."
+        )
+      );
       return;
     }
 
@@ -141,13 +153,16 @@ export default function CorrigirIclassWizard({ cliente, usuario, onClose, onSave
           </div>
         </form>
 
-        {naoEncontrado && (
-          <div className="bg-amber-50 border border-amber-100 text-amber-800 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
+        {erro && (
+          <div
+            className={`border text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2 ${
+              erro.tipo === "comunicacao"
+                ? "bg-red-50 border-red-100 text-red-700"
+                : "bg-amber-50 border-amber-100 text-amber-800"
+            }`}
+          >
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>
-              Cliente não localizado no iClass. Tente outro método de busca ou confira se o preenchimento está
-              exatamente igual ao iClass.
-            </span>
+            <span>{erro.mensagem}</span>
           </div>
         )}
 

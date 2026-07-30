@@ -16,8 +16,9 @@ import {
   Plus,
   Eye,
   Edit3,
-  Ban,
-  UserPlus
+  UserPlus,
+  FileSearch,
+  Trash2
 } from "lucide-react";
 import { ClienteCard, GeradorAtg, EstadoClienteCard, PerfilUsuario } from "../types";
 import { supabase, isSupabaseConfigured } from "../utils/supabase";
@@ -26,6 +27,7 @@ import FilterBar from "../components/ui/FilterBar";
 import EmptyState from "../components/ui/EmptyState";
 import GeradorModal from "../components/Clientes/GeradorModal";
 import AdicionarGeradorWizard from "../components/Clientes/AdicionarGeradorWizard";
+import AdicionarGeradorPorOsWizard from "../components/Clientes/AdicionarGeradorPorOsWizard";
 import CorrigirIclassWizard from "../components/Clientes/CorrigirIclassWizard";
 import CriarClienteWizard from "../components/Clientes/CriarClienteWizard";
 import { validarCadastro } from "../utils/atgBackend";
@@ -61,6 +63,10 @@ export default function Clientes({ activeRole }: ClientesProps) {
 
   const [selectedGerador, setSelectedGerador] = useState<GeradorAtg | null>(null);
   const [addGeradorForCliente, setAddGeradorForCliente] = useState<ClienteCard | null>(null);
+  const [addGeradorPorOsForCliente, setAddGeradorPorOsForCliente] = useState<ClienteCard | null>(null);
+
+  const [confirmandoExclusaoClienteId, setConfirmandoExclusaoClienteId] = useState<number | null>(null);
+  const [excluindoCliente, setExcluindoCliente] = useState(false);
 
   // Correção manual do cadastro iClass, para quando o match automático não bate.
   // Os dados do Omie nunca são editados aqui — só os do iClass, via busca no webhook.
@@ -193,34 +199,37 @@ export default function Clientes({ activeRole }: ClientesProps) {
     }
   };
 
-  const handleToggleAtivoCliente = async (cliente: ClienteCard) => {
+  const handleExcluirCliente = (cliente: ClienteCard) => {
+    if (cliente.n_geradores > 0) {
+      toast.error("Não é possível excluir este cliente.", {
+        description: `Ele ainda tem ${cliente.n_geradores} gerador(es) vinculado(s). Exclua os geradores primeiro (na lista "Ver Geradores").`
+      });
+      return;
+    }
+    setConfirmandoExclusaoClienteId(cliente.id);
+  };
+
+  const handleConfirmarExclusaoCliente = async (cliente: ClienteCard) => {
     if (!supabase) return;
+    setExcluindoCliente(true);
 
-    const { error: updateError } = await supabase
-      .from("omie_clientes")
-      .update({ inativo: !cliente.inativo })
-      .eq("id", cliente.id);
+    // Exclusão real e definitiva — sem possibilidade de recuperação pela UI.
+    // O log guarda uma cópia do cliente (valor_antes) só para auditoria; não
+    // existe "Reverter" para esta ação (ver Historico.tsx).
+    const { error } = await supabase.from("omie_clientes").delete().eq("id", cliente.id);
 
-    if (updateError) {
-      toast.error("Erro ao alterar status do cliente.", { description: updateError.message });
+    setExcluindoCliente(false);
+
+    if (error) {
+      toast.error("Erro ao excluir cliente.", { description: error.message });
       return;
     }
 
-    await registrarLog(
-      "cliente",
-      cliente.id,
-      cliente.inativo ? "reativou" : "inativou",
-      currentUserEmail,
-      { inativo: cliente.inativo },
-      { inativo: !cliente.inativo }
-    );
+    await registrarLog("cliente", cliente.id, "excluiu_definitivamente", currentUserEmail, { ...cliente }, null);
 
-    setClientes((prev) => prev.map((c) => (c.id === cliente.id ? { ...c, inativo: !c.inativo } : c)));
-    toast.success(
-      cliente.inativo
-        ? `${cliente.razao_social} reativado com sucesso!`
-        : `${cliente.razao_social} inativado com sucesso!`
-    );
+    setClientes((prev) => prev.filter((c) => c.id !== cliente.id));
+    setConfirmandoExclusaoClienteId(null);
+    toast.success("Cliente excluído definitivamente.");
   };
 
   const handleValidarCliente = async (cliente: ClienteCard) => {
@@ -252,7 +261,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
     }
   };
 
-  const handleGeradorArchived = (geradorId: number) => {
+  const handleGeradorDeleted = (geradorId: number) => {
     setGeradoresByCliente((prev) => {
       const next: Record<number, GeradorAtg[]> = {};
       for (const [clienteId, lista] of Object.entries(prev) as [string, GeradorAtg[]][]) {
@@ -476,20 +485,51 @@ export default function Clientes({ activeRole }: ClientesProps) {
                             </button>
                           )}
 
+                          {cliente.estado !== "SEM_ICLASS" && (
+                            <button
+                              onClick={() => setAddGeradorPorOsForCliente(cliente)}
+                              className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer"
+                            >
+                              <FileSearch className="w-3.5 h-3.5" />
+                              <span>Adicionar Gerador por O.S.</span>
+                            </button>
+                          )}
+
                           {activeRole === PerfilUsuario.ADMIN && (
                             <button
-                              onClick={() => handleToggleAtivoCliente(cliente)}
-                              className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer ${
-                                cliente.inativo
-                                  ? "bg-white border border-slate-200 text-emerald-600 hover:bg-emerald-50"
-                                  : "bg-white border border-slate-200 text-rose-600 hover:bg-rose-50"
-                              }`}
+                              onClick={() => handleExcluirCliente(cliente)}
+                              className="px-3.5 py-2 bg-white border border-slate-200 text-rose-600 rounded-xl font-bold text-xs hover:bg-rose-50 transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer"
                             >
-                              {cliente.inativo ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
-                              <span>{cliente.inativo ? "Reativar Cliente" : "Inativar Cliente"}</span>
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Excluir Cliente</span>
                             </button>
                           )}
                         </div>
+
+                        {confirmandoExclusaoClienteId === cliente.id && (
+                          <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 space-y-3">
+                            <p className="text-xs font-semibold text-rose-800">
+                              Tem certeza? O cliente será apagado definitivamente do banco de dados, sem possibilidade de
+                              recuperação.
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleConfirmarExclusaoCliente(cliente)}
+                                disabled={excluindoCliente}
+                                className="px-3.5 py-2 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer disabled:opacity-60"
+                              >
+                                {excluindoCliente ? "Excluindo..." : "Sim, excluir definitivamente"}
+                              </button>
+                              <button
+                                onClick={() => setConfirmandoExclusaoClienteId(null)}
+                                disabled={excluindoCliente}
+                                className="px-3.5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-60"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         <AnimatePresence initial={false}>
                           {showGeradoresFor === cliente.id && (
@@ -513,7 +553,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
                                 ) : (
                                   <div className="space-y-2">
                                     {geradores.map((g, idx) => (
-                                      <motion.button
+                                      <motion.div
                                         key={g.id}
                                         initial={{ opacity: 0, y: -6 }}
                                         animate={{ opacity: 1, y: 0 }}
@@ -538,7 +578,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
                                             <span className="bg-rose-50 text-rose-700 border border-rose-100 text-[9px] font-bold px-1.5 py-0.5 rounded">SEM ATIVO</span>
                                           )}
                                         </div>
-                                      </motion.button>
+                                      </motion.div>
                                     ))}
                                   </div>
                                 )}
@@ -565,7 +605,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
             handleGeradorUpdated(updated);
             setSelectedGerador(updated);
           }}
-          onArchived={handleGeradorArchived}
+          onDeleted={handleGeradorDeleted}
         />
       )}
 
@@ -577,6 +617,20 @@ export default function Clientes({ activeRole }: ClientesProps) {
           onCreated={(novo) => {
             handleGeradorCreated(novo);
             setAddGeradorForCliente(null);
+            setShowGeradoresFor(novo.omie_cliente_id);
+            setSelectedGerador(novo);
+          }}
+        />
+      )}
+
+      {addGeradorPorOsForCliente && (
+        <AdicionarGeradorPorOsWizard
+          cliente={addGeradorPorOsForCliente}
+          usuario={currentUserEmail}
+          onClose={() => setAddGeradorPorOsForCliente(null)}
+          onCreated={(novo) => {
+            handleGeradorCreated(novo);
+            setAddGeradorPorOsForCliente(null);
             setShowGeradoresFor(novo.omie_cliente_id);
             setSelectedGerador(novo);
           }}

@@ -454,7 +454,219 @@ que a criação de cliente ainda não vá ser testada — senão a página de
 Clientes para de carregar o status ativo/inativo e o nome iClass que já
 funcionavam.
 
+---
+
+## Ajuste extra 2 — Ativar/Inativar Gerador (implementado e depois **revertido**)
+
+Motivado pelo diagnóstico (`docs/diagnostico-sistema.md`, achado principal),
+esse toggle leve de ativo/inativo (mesmo padrão de Clientes/Produtos/Serviços)
+chegou a ser implementado em `GeradorModal.tsx`, `Clientes.tsx` (lista "Ver
+Geradores") e na página legada `Geradores.tsx`.
+
+**Removido a pedido do Alisson**: gera peso desnecessário no banco sem uso
+real — o arquivamento (item 5, soft-delete via `arquivado`) já cobre a
+necessidade de "remover" um gerador, e é reversível pelo Histórico. Mantém-se
+**só** o arquivamento para Gerador. O toggle ativo/inativo de
+Cliente/Produtos/Serviços **não foi tocado** (fora de escopo, continua como
+estava).
+
+- Removido de `GeradorModal.tsx`, `Clientes.tsx` e `Geradores.tsx` (e o prop
+  `activeRole`/`currentUserEmail` que só existia por causa disso em
+  `Geradores.tsx`/`App.tsx`).
+- Campo `inativo` removido das interfaces `GeradorAtg` e `GeradorFicha`
+  (`types.ts`).
+- **A coluna `inativo` nunca chegou a ser criada no banco** (confirmado ao
+  vivo na época — não existia nem em `geradores_atg` nem em `geradores`), então
+  não há nenhum `DROP COLUMN` pendente nem dado a perder.
+- `tsc --noEmit` e `vite build` rodam limpos após a reversão.
+
+---
+
+## Ajuste extra 3 — Adicionar Gerador pelo número da O.S. (front pronto, **webhook pendente**)
+
+Nova opção pedida junto com a reversão do item acima: adicionar um gerador ao
+cliente localizando o ativo no iClass pelo **número da O.S.**, em vez de por
+série/patrimônio (fluxo que já existia, "Adicionar Gerador").
+
+- **Botão novo** "Adicionar Gerador por O.S." em `Clientes.tsx`, ao lado do
+  "Adicionar Gerador" existente (mesma regra de visibilidade: escondido só
+  quando `cliente.estado === "SEM_ICLASS"`).
+- **Componente novo**: `src/components/Clientes/AdicionarGeradorPorOsWizard.tsx`
+  — mesma estrutura do `AdicionarGeradorWizard.tsx` (busca → seleção se houver
+  múltiplos ativos pra mesma O.S. → formulário editável → revisão →
+  confirmação explícita antes de gravar, mesmo padrão do item 2 acima), só que
+  com uma única etapa de busca (pelo código da O.S.) em vez das etapas
+  série/patrimônio/bloqueado.
+- **`src/utils/atgBackend.ts`**: função nova `buscarAtivoPorOs(codigoOs)`,
+  tipos `BuscarAtivoPorOsResult*` (sucesso / múltiplos / falha, mesmo
+  formato do `buscarAtivo` existente). Usa `classificarErroWebhook` para as
+  mensagens de rate limit/comunicação, igual aos outros fluxos.
+- Criação em si continua usando a RPC `criar_gerador` já existente — só a
+  **busca do ativo** usa o webhook novo.
+
+### Webhook — pronto e testado ao vivo ✅
+
+URL real: `https://main-n8n.1smjgn.easypanel.host/webhook/gerador-por-os`
+(já configurada em `WEBHOOK_URLS.buscarAtivoPorOs`, `atgBackend.ts`).
+
+Testado ao vivo nesta sessão via curl, com a O.S. real `1353908811`
+(passou por 4 iterações até o workflow ficar certo — histórico rápido: 1º
+erro foi falta de nó "Respond to Webhook"; 2º foi o nó de resposta devolvendo
+o JSON cru do iClass em vez do contrato combinado; 3º foi o nó de mapeamento
+ligado no nó errado, `objects` vinha vazio mesmo com o ativo existindo).
+Resposta final confirmada:
+```json
+{"ok":true,"ativo_id":117331087,"descricao":"GRUPO GERADOR - NEGRINI - U","fabricante":"DIAMOND","modelo":null,"status_ativo":"ATIVO"}
+```
+Bate com o contrato esperado pelo front. Dois detalhes menores, não
+bloqueantes: `num_serie` não vem no JSON (front trata como opcional, campo
+fica vazio pra preencher na mão) e `modelo` vem `null` em vez de string vazia
+(front converte pra vazio antes de mostrar). Se quiser trazer `num_serie`
+também (o iClass devolve como `numeroSerie` no objeto do ativo), é só
+completar o mapeamento no nó Code do workflow.
+
+**Contrato confirmado do webhook:**
+```json
+// envia
+{ "codigo_os": "OS-12345" }
+
+// recebe — um ativo encontrado
+{ "ok": true, "ativo_id": 123, "descricao": "...", "fabricante": "...", "modelo": "...", "status_ativo": "...", "num_serie": "..." }
+
+// recebe — mais de um ativo vinculado à mesma O.S.
+{ "ok": true, "multiplos": true, "opcoes": [{ "ativo_id": 123, "descricao": "..." }] }
+
+// recebe — não encontrado / rate limit / erro
+{ "ok": false, "motivo": "nao_encontrado" | "rate_limit_excedido" | "erro_comunicacao" }
+```
+
 ### Não testado em navegador
+
+`tsc --noEmit` e `vite build` rodam limpos, e o webhook em si foi validado
+ao vivo via curl (acima). Não testei o fluxo completo clicando pela UI no
+navegador (sem login de teste configurado no ambiente) — recomendo um teste
+manual do botão "Adicionar Gerador por O.S." antes de liberar pro time.
+
+---
+
+## Ajuste extra 4 — "Remover Gerador" agora é exclusão real (a pedido do líder de projeto)
+
+Pedido explícito do líder de projeto: o botão de remover gerador deve **apagar
+de verdade** do banco, sem possibilidade de recuperação — diferente do item 5
+original (arquivamento reversível), que era a decisão anterior.
+
+**Confirmado com o Alisson antes de mexer** (mudança irreversível de dado):
+escopo é **só Gerador** (Cliente/Produtos/Serviços continuam com
+inativar/arquivar como estão, sem alteração); o Histórico **continua
+registrando** a exclusão (com uma cópia completa do gerador em `valor_antes`,
+pra consulta/auditoria), mas **sem botão "Reverter"**, já que não existe mais
+linha no banco pra restaurar com um update.
+
+- `GeradorModal.tsx`: `handleArquivar` → `handleExcluir`, agora faz
+  `supabase.from("geradores_atg").delete().eq("id", gerador.id)` em vez de
+  `update({arquivado:true})`. Botão renomeado "Remover Gerador" → **"Excluir
+  Gerador"** (ícone trocado de `Archive` para `Trash2`), e o texto de
+  confirmação agora avisa claramente: *"O gerador será apagado definitivamente
+  do banco de dados, sem possibilidade de recuperação."* — sem mais nenhuma
+  menção a "arquivado"/"reverter".
+- Log: grava `acao: "excluiu_definitivamente"`, `valor_antes` = cópia completa
+  do gerador (todos os campos, pra ficar registrado o que existia antes de
+  apagar), `valor_depois: null`.
+- `Historico.tsx`: a condição que mostra o botão "Reverter" agora exclui
+  explicitamente `acao === "excluiu_definitivamente"` (além do já existente
+  `"reverteu"`) — mesmo que `valor_antes` esteja preenchido, não mostra
+  Reverter pra essa ação, porque reverter faria um `UPDATE` numa linha que já
+  não existe (não daria erro, só não faria nada — por isso a exclusão
+  explícita, pra não induzir o admin a achar que "reverteu" quando na
+  verdade não fez nada).
+- Prop/handler renomeados por clareza (mesmo comportamento): `onArchived` →
+  `onDeleted` em `GeradorModal.tsx`/`Clientes.tsx`, `handleGeradorArchived` →
+  `handleGeradorDeleted`.
+- **A coluna `arquivado`/`arquivado_por`/`arquivado_em` de `geradores_atg` não
+  foi removida do banco nem do código** — só parou de ser usada por esse botão.
+  Não tinha pedido pra limpar isso agora; se quiser que eu remova de vez
+  (coluna + campos do tipo `GeradorAtg` + filtro `eq("arquivado", false)` em
+  `Clientes.tsx`), é só falar.
+
+### Atenção — segurança (RLS)
+
+Isso é mais sensível que o arquivamento que existia antes: um `DELETE` real
+apaga a linha de vez, e a auditoria de segurança já registrada neste mesmo
+documento (seção "Lembrete de segurança") apontou que `geradores_atg` **aceita
+escrita anônima hoje** (RLS desligada). Antes desse botão ir pra produção,
+vale confirmar que a política de RLS/permissão de `DELETE` nessa tabela está
+restrita a quem realmente deveria poder excluir (ex: só usuários
+autenticados/admin) — sem isso, qualquer requisição com a anon key consegue
+apagar um gerador, não só quem clica no botão pela UI.
+
+### Não testado em navegador
+
+`tsc --noEmit` e `vite build` rodam limpos. Não fiz teste interativo (exclusão
+real de dado em produção não é algo pra testar "só pra ver" sem combinar
+antes) — recomendo testar com um gerador de teste/descartável antes de usar
+em um registro real.
+
+---
+
+## Ajuste extra 5 — "Inativar Cliente" também virou exclusão real
+
+Mesmo pedido do ajuste anterior, agora pro botão de Cliente: **"Inativar
+Cliente"/"Reativar Cliente" foi removido** e virou **"Excluir Cliente"**, com
+o mesmo padrão de aviso e irreversibilidade do "Excluir Gerador" (ver Ajuste
+extra 4). Escopo confirmado com o Alisson: **só Cliente** — Produtos e
+Serviços não foram tocados, continuam com inativar/reativar como sempre
+estiveram.
+
+- `Clientes.tsx`: `handleToggleAtivoCliente` (fazia
+  `update({inativo: !cliente.inativo})`) → `handleExcluirCliente` +
+  `handleConfirmarExclusaoCliente`, que fazem
+  `supabase.from("omie_clientes").delete().eq("id", cliente.id)`. Botão
+  "Inativar/Reativar Cliente" → **"Excluir Cliente"** (ícone `Ban` trocado por
+  `Trash2`), com painel de confirmação inline (mesmo texto do gerador: *"será
+  apagado definitivamente do banco de dados, sem possibilidade de
+  recuperação"*).
+- **Proteção contra exclusão com geradores vinculados** (decisão tomada com o
+  Alisson antes de implementar, pra não arriscar deixar geradores órfãos ou
+  bater numa constraint de FK sem explicação): antes de mostrar a
+  confirmação, checa `cliente.n_geradores` (já vem pronto da
+  `vw_cliente_card`, sem precisar de query extra) — se for maior que zero,
+  **bloqueia** com um toast explicando que precisa excluir os geradores desse
+  cliente primeiro, e nem chega a abrir a confirmação.
+- Log: mesmo padrão do gerador — `acao: "excluiu_definitivamente"`,
+  `valor_antes` = cópia do cliente (campos do `ClienteCard`), `valor_depois:
+  null`. `Historico.tsx` já trata essa ação genericamente (a condição do
+  botão "Reverter" checa o nome da ação, não a entidade), então não precisou
+  de nenhuma mudança lá.
+- **O campo `inativo` de `omie_clientes` não foi removido** do banco nem do
+  tipo `ClienteCard`/`OmieCliente` — clientes antigos que já estavam
+  marcados como inativos antes dessa mudança continuam aparecendo com a
+  badge "INATIVO" e opacidade reduzida no card (comportamento antigo,
+  preservado só pra não esconder informação histórica); só não tem mais
+  como marcar um cliente **novo** como inativo pela UI.
+
+### Atenção — segurança (RLS) e FK
+
+Mesmo alerta do Ajuste extra 4: `omie_clientes` também aceita escrita anônima
+hoje (RLS desligada, conforme a auditoria já registrada neste documento) —
+vale revisar a política de `DELETE` antes de produção. Além disso, a
+proteção "bloqueia se tiver gerador" é feita **no front**, a partir do
+`n_geradores` da view — se por algum motivo essa contagem estiver
+desatualizada (cache local, view não recalculada), o `DELETE` pode ainda
+esbarrar numa constraint de chave estrangeira no banco (se existir uma
+`FOREIGN KEY` de `geradores_atg.omie_cliente_id` pra `omie_clientes.id`) e
+retornar um erro do Postgres — o toast de erro mostra a mensagem crua do
+Supabase nesse caso, então não trava silenciosamente, mas vale confirmar
+com quem administra o banco se essa constraint existe e qual o comportamento
+dela (`RESTRICT` é o que a checagem do front pressupõe).
+
+### Não testado em navegador
+
+`tsc --noEmit` e `vite build` rodam limpos. Não fiz teste interativo (mesma
+razão do ajuste anterior — exclusão real de cliente em produção).
+
+---
+
+### Não testado em navegador (ajustes 1-6 originais)
 
 Rodei `tsc --noEmit` e `vite build` (ambos limpos), subi o dev server para
 confirmar que a página inicial carrega sem erro de bundle, e validei o

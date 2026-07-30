@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckCircle2, Circle, Archive } from "lucide-react";
+import { CheckCircle2, Circle, Trash2 } from "lucide-react";
 import { GeradorAtg } from "../../types";
 import Modal from "../ui/Modal";
 import { validarCadastro } from "../../utils/atgBackend";
@@ -14,14 +14,14 @@ interface GeradorModalProps {
   usuario: string;
   onClose: () => void;
   onUpdated: (updated: GeradorAtg) => void;
-  onArchived: (geradorId: number) => void;
+  onDeleted: (geradorId: number) => void;
 }
 
-export default function GeradorModal({ gerador, usuario, onClose, onUpdated, onArchived }: GeradorModalProps) {
+export default function GeradorModal({ gerador, usuario, onClose, onUpdated, onDeleted }: GeradorModalProps) {
   const [tab, setTab] = useState<"preditiva" | "ficha">("preditiva");
   const [validating, setValidating] = useState(false);
   const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
-  const [arquivando, setArquivando] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
 
   const handleValidar = async () => {
     setValidating(true);
@@ -38,34 +38,26 @@ export default function GeradorModal({ gerador, usuario, onClose, onUpdated, onA
     }
   };
 
-  const handleArquivar = async () => {
+  const handleExcluir = async () => {
     if (!supabase) return;
-    setArquivando(true);
+    setExcluindo(true);
 
-    const agora = new Date().toISOString();
-    const { error } = await supabase
-      .from("geradores_atg")
-      .update({ arquivado: true, arquivado_por: usuario, arquivado_em: agora })
-      .eq("id", gerador.id);
+    // Exclusão real e definitiva — sem possibilidade de recuperação pela UI.
+    // O log guarda uma cópia completa do gerador (valor_antes) só para
+    // auditoria/consulta; não existe "Reverter" para esta ação (ver Historico.tsx).
+    const { error } = await supabase.from("geradores_atg").delete().eq("id", gerador.id);
 
-    setArquivando(false);
+    setExcluindo(false);
 
     if (error) {
-      toast.error("Erro ao remover gerador.", { description: error.message });
+      toast.error("Erro ao excluir gerador.", { description: error.message });
       return;
     }
 
-    await registrarLog(
-      "gerador",
-      gerador.id,
-      "arquivou",
-      usuario,
-      { arquivado: false, arquivado_por: null, arquivado_em: null },
-      { arquivado: true, arquivado_por: usuario, arquivado_em: agora }
-    );
+    await registrarLog("gerador", gerador.id, "excluiu_definitivamente", usuario, { ...gerador }, null);
 
-    toast.success("Gerador removido (arquivado) com sucesso.");
-    onArchived(gerador.id);
+    toast.success("Gerador excluído definitivamente.");
+    onDeleted(gerador.id);
     onClose();
   };
 
@@ -129,28 +121,27 @@ export default function GeradorModal({ gerador, usuario, onClose, onUpdated, onA
             onClick={() => setConfirmandoRemocao(true)}
             className="px-3.5 py-2 bg-white border border-slate-200 text-rose-600 rounded-xl font-bold text-xs hover:bg-rose-50 transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer"
           >
-            <Archive className="w-3.5 h-3.5" />
-            <span>Remover Gerador</span>
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Excluir Gerador</span>
           </button>
         </div>
 
         {confirmandoRemocao && (
           <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 space-y-3">
             <p className="text-xs font-semibold text-rose-800">
-              Tem certeza? O gerador será arquivado (não aparecerá mais em nenhuma listagem) e esta ação ficará registrada
-              no histórico. Um administrador pode reverter depois, se necessário.
+              Tem certeza? O gerador será apagado definitivamente do banco de dados, sem possibilidade de recuperação.
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={handleArquivar}
-                disabled={arquivando}
+                onClick={handleExcluir}
+                disabled={excluindo}
                 className="px-3.5 py-2 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer disabled:opacity-60"
               >
-                {arquivando ? "Removendo..." : "Sim, remover gerador"}
+                {excluindo ? "Excluindo..." : "Sim, excluir definitivamente"}
               </button>
               <button
                 onClick={() => setConfirmandoRemocao(false)}
-                disabled={arquivando}
+                disabled={excluindo}
                 className="px-3.5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-60"
               >
                 Cancelar

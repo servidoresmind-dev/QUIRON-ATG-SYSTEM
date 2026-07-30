@@ -1,7 +1,14 @@
 import React, { useState } from "react";
 import { AlertTriangle, CheckCircle2, UserPlus } from "lucide-react";
 import Modal from "../ui/Modal";
-import { criarCliente, CriarClientePayload } from "../../utils/atgBackend";
+import {
+  criarCliente,
+  CriarClientePayload,
+  CriarClienteCompleto,
+  CriarClienteIclassPendente,
+  classificarErroWebhook,
+  TipoErroWebhook
+} from "../../utils/atgBackend";
 import { supabase } from "../../utils/supabase";
 import { registrarLog } from "../../utils/logEdicoes";
 import { toast } from "sonner";
@@ -59,7 +66,7 @@ function formatCnpjCpf(valor: string): string {
 export default function CriarClienteWizard({ usuario, onClose, onCreated }: CriarClienteWizardProps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [faltando, setFaltando] = useState<string[]>([]);
-  const [erro, setErro] = useState<string | null>(null);
+  const [erro, setErro] = useState<{ tipo: TipoErroWebhook; mensagem: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const setCampo = (key: keyof FormState, value: string) => {
@@ -93,14 +100,28 @@ export default function CriarClienteWizard({ usuario, onClose, onCreated }: Cria
 
     if (result.status === "falha_omie") {
       setSubmitting(false);
-      setErro(result.mensagem || "Falha ao criar no Omie. Nada foi cadastrado. Verifique os dados e tente novamente.");
+      setErro({
+        tipo: "outro",
+        mensagem: result.mensagem || "Falha ao criar no Omie. Nada foi cadastrado. Verifique os dados e tente novamente."
+      });
       toast.error("Falha ao criar cliente no Omie.", { description: result.omie_erro });
+      return;
+    }
+
+    if (result.status === "rate_limit_excedido" || result.status === "erro_comunicacao") {
+      setSubmitting(false);
+      setErro(classificarErroWebhook(result.status, result.mensagem));
       return;
     }
 
     // status "completo" | "iclass_sem_id" | "iclass_pendente" — em todos, o
     // Omie já foi criado, então grava no nosso banco (nunca perde o dado).
-    const iclassPendente = result.status === "iclass_pendente";
+    // Cast explícito porque o narrowing do TS não elimina os cases já
+    // tratados acima quando a checagem usa um `||` (projeto roda sem
+    // strictNullChecks, que é quando esse narrowing costuma falhar).
+    const sucesso = result as CriarClienteCompleto | CriarClienteIclassPendente;
+    const completo = result as CriarClienteCompleto;
+    const iclassPendente = sucesso.status === "iclass_pendente";
     const cnpjLimpo = payload.cnpj_cpf;
 
     const insertPayload = {
@@ -108,10 +129,10 @@ export default function CriarClienteWizard({ usuario, onClose, onCreated }: Cria
       nome_fantasia: form.nome_fantasia,
       cnpj_raw: formatCnpjCpf(cnpjLimpo),
       cnpj_limpo: cnpjLimpo,
-      codigo_omie: String(result.codigo_cliente_omie),
-      iclass_id_encontrado: iclassPendente ? null : result.iclass_id,
-      iclass_nome: iclassPendente ? null : result.iclass_nome ?? null,
-      iclass_codigo_encontrado: iclassPendente ? null : result.iclass_codigo ?? null,
+      codigo_omie: String(sucesso.codigo_cliente_omie),
+      iclass_id_encontrado: iclassPendente ? null : completo.iclass_id,
+      iclass_nome: iclassPendente ? null : completo.iclass_nome ?? null,
+      iclass_codigo_encontrado: iclassPendente ? null : completo.iclass_codigo ?? null,
       iclass_pendente: iclassPendente
     };
 
@@ -123,9 +144,10 @@ export default function CriarClienteWizard({ usuario, onClose, onCreated }: Cria
       toast.error("Cliente foi criado no Omie/iClass, mas falhou ao salvar no nosso banco.", {
         description: insertError.message
       });
-      setErro(
-        `Atenção: o cliente já existe no Omie (código ${result.codigo_cliente_omie}), mas não foi possível salvar aqui. Erro: ${insertError.message}`
-      );
+      setErro({
+        tipo: "outro",
+        mensagem: `Atenção: o cliente já existe no Omie (código ${sucesso.codigo_cliente_omie}), mas não foi possível salvar aqui. Erro: ${insertError.message}`
+      });
       return;
     }
 
@@ -140,7 +162,7 @@ export default function CriarClienteWizard({ usuario, onClose, onCreated }: Cria
 
     if (iclassPendente) {
       toast.warning("Cliente criado no Omie — finalize manualmente no iClass.", {
-        description: result.iclass_erro,
+        description: (result as CriarClienteIclassPendente).iclass_erro,
         duration: 8000
       });
     } else if (result.status === "iclass_sem_id") {
@@ -170,9 +192,15 @@ export default function CriarClienteWizard({ usuario, onClose, onCreated }: Cria
         </div>
 
         {erro && (
-          <div className="bg-red-50 border border-red-100 text-red-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
+          <div
+            className={`border text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2 ${
+              erro.tipo === "rate_limit"
+                ? "bg-amber-50 border-amber-100 text-amber-800"
+                : "bg-red-50 border-red-100 text-red-700"
+            }`}
+          >
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{erro}</span>
+            <span>{erro.mensagem}</span>
           </div>
         )}
 

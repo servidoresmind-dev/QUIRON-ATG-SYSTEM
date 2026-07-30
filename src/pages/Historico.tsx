@@ -18,19 +18,66 @@ interface HistoricoProps {
   currentUserEmail: string;
 }
 
+// Campos simples (string/number/boolean) renderizam como "campo: valor" direto.
+// Campos que são objeto/array (ex: ficha_levantamento, com várias seções
+// aninhadas) ficam recolhidos por padrão — só um resumo com a contagem — e só
+// mostram o JSON completo se o usuário clicar, pra não poluir a tabela.
+interface CampoValorProps {
+  campo: string;
+  valor: unknown;
+}
+
+function CampoValor({ campo, valor }: CampoValorProps) {
+  const [aberto, setAberto] = useState(false);
+
+  if (valor === null || valor === undefined) {
+    return (
+      <p className="text-[10px] leading-snug">
+        <span className="text-slate-400">{campo}: </span>
+        <span className="text-slate-300">—</span>
+      </p>
+    );
+  }
+
+  if (typeof valor !== "object") {
+    return (
+      <p className="text-[10px] leading-snug">
+        <span className="text-slate-400">{campo}: </span>
+        <span className="font-semibold text-slate-700 break-words">{String(valor)}</span>
+      </p>
+    );
+  }
+
+  const qtd = Array.isArray(valor) ? valor.length : Object.keys(valor).length;
+
+  return (
+    <div className="text-[10px] leading-snug">
+      <button
+        type="button"
+        onClick={() => setAberto((a) => !a)}
+        className="text-brand-600 font-semibold hover:underline cursor-pointer"
+      >
+        {campo} ({qtd} {Array.isArray(valor) ? "itens" : "campos"}) {aberto ? "▲" : "▼"}
+      </button>
+      {aberto && (
+        <pre className="mt-1 max-h-48 overflow-auto bg-slate-50 border border-slate-100 rounded-lg p-2 text-[9px] font-mono whitespace-pre-wrap break-words">
+          {JSON.stringify(valor, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function ValorResumo({ valor }: { valor: Record<string, unknown> | null }) {
   if (!valor) return <span className="text-slate-300">—</span>;
   const entradas = Object.entries(valor);
   if (entradas.length === 0) return <span className="text-slate-300">—</span>;
   return (
-    <div className="space-y-0.5 max-w-[220px]">
+    <div className="space-y-1 max-w-[240px]">
       {entradas.map(([campo, v]) => (
-        <p key={campo} className="text-[10px] leading-snug">
-          <span className="text-slate-400">{campo}: </span>
-          <span className="font-semibold text-slate-700 break-words">
-            {typeof v === "object" && v !== null ? JSON.stringify(v) : String(v ?? "—")}
-          </span>
-        </p>
+        <React.Fragment key={campo}>
+          <CampoValor campo={campo} valor={v} />
+        </React.Fragment>
       ))}
     </div>
   );
@@ -182,7 +229,13 @@ export default function Historico({ activeRole, currentUserEmail }: HistoricoPro
             </thead>
             <tbody className="divide-y divide-slate-50 text-xs align-top">
               {filteredLogs.map((log) => {
-                const podeReverter = Boolean(TABELA_POR_ENTIDADE[log.entidade]) && Boolean(log.valor_antes) && log.acao !== "reverteu";
+                // "excluiu_definitivamente" é um DELETE real — não existe update pra reverter
+                // (a linha não existe mais na tabela), então nunca mostra o botão pra essa ação.
+                const podeReverter =
+                  Boolean(TABELA_POR_ENTIDADE[log.entidade]) &&
+                  Boolean(log.valor_antes) &&
+                  log.acao !== "reverteu" &&
+                  log.acao !== "excluiu_definitivamente";
                 return (
                   <tr key={log.id}>
                     <td className="py-2.5 px-3 whitespace-nowrap text-slate-500">

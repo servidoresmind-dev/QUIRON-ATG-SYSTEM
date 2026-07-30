@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Search, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { GeradorAtg, FichaLevantamento, FichaLevantamentoOutroItem } from "../../types";
-import { buscarOs } from "../../utils/atgBackend";
+import { buscarOs, BuscarOsResultFalha, classificarErroWebhook, TipoErroWebhook } from "../../utils/atgBackend";
 import { supabase } from "../../utils/supabase";
 import { toast } from "sonner";
 import { registrarLog } from "../../utils/logEdicoes";
@@ -19,7 +19,7 @@ function isSubObjeto(valor: unknown): valor is Record<string, string> {
 export default function VincularOsWizard({ gerador, usuario, onLinked }: VincularOsWizardProps) {
   const [codigoOs, setCodigoOs] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [erro, setErro] = useState<{ tipo: TipoErroWebhook; mensagem: string } | null>(null);
   const [preview, setPreview] = useState<{ checklistId: number; ficha: FichaLevantamento } | null>(null);
   const [confirming, setConfirming] = useState(false);
 
@@ -39,7 +39,7 @@ export default function VincularOsWizard({ gerador, usuario, onLinked }: Vincula
     }
 
     setLoading(true);
-    setError(null);
+    setErro(null);
     setPreview(null);
 
     const result = await buscarOs(gerador.ativo_id, codigoOs.trim());
@@ -47,7 +47,7 @@ export default function VincularOsWizard({ gerador, usuario, onLinked }: Vincula
     setLoading(false);
 
     if (!result.ok) {
-      setError("OS não localizada, confira o ID.");
+      setErro(classificarErroWebhook((result as BuscarOsResultFalha).motivo, "OS não localizada, confira o ID."));
       return;
     }
 
@@ -128,10 +128,18 @@ export default function VincularOsWizard({ gerador, usuario, onLinked }: Vincula
         </button>
       </form>
 
-      {error && (
-        <div className="bg-red-50 border border-red-100 text-red-700 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
+      {erro && (
+        <div
+          className={`border text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2 ${
+            erro.tipo === "comunicacao"
+              ? "bg-red-50 border-red-100 text-red-700"
+              : erro.tipo === "rate_limit"
+              ? "bg-amber-50 border-amber-100 text-amber-800"
+              : "bg-red-50 border-red-100 text-red-700"
+          }`}
+        >
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
+          <span>{erro.mensagem}</span>
         </div>
       )}
 
