@@ -710,6 +710,87 @@ mensagem de sucesso aparece agora.
 
 ---
 
+## Novo — Cadastro manual de preditiva (pra geradores sem item nenhum)
+
+**Motivado por dúvida real do Douglas**: ele tentou ver a aba "Preditiva" de
+um gerador recém-cadastrado e viu a mensagem "nenhum item encontrado" — que
+já é comportamento correto (itens de preditiva vêm de um processo externo de
+importação/planilha, que "casa" equipamentos com a planilha; um gerador
+cadastrado na hora pela tela ainda não passou por esse processo). Só que não
+existia nenhum jeito de cadastrar isso manualmente enquanto isso não
+acontece. Você decidiu: para geradores sem preditiva, dar a opção de
+cadastrar os campos padrão manualmente.
+
+**Correção que veio junto (importante)**: descobri, investigando isso, que a
+RPC `salvar_preditiva` (usada ao editar data pelo lápis na tela) tinha
+**exatamente o mesmo bug do `criar_gerador`** (ver correção acima) — ela já
+existe de verdade no banco e retorna a linha (`preditivas_atg`), não
+`{ok:...}`. Se eu não tivesse corrigido isso também, qualquer data que o
+Douglas preenchesse manualmente nos itens novos pareceria salvar mas não
+salvaria de verdade. Corrigido do mesmo jeito (`atgBackend.ts`,
+`PreditivaTab.tsx`): sucesso reconhecido pela presença de um `id` na
+resposta.
+
+**O que foi implementado** (`src/components/Clientes/PreditivaTab.tsx`):
+quando um gerador não tem nenhum item de preditiva, aparece um botão
+**"Cadastrar itens padrão de preditiva"** logo abaixo do aviso. Ao clicar,
+busca o catálogo fixo de itens em `preditiva_itens` (hoje são 7: Óleo e
+Filtros, Bateria, Mangueira de Combustível, Limpeza do QTA, Mangueira de
+Pré-Aquecimento, Limpeza do Radiador, Limpeza do Tanque) e insere uma linha
+por item em `preditivas_atg`, vinculada ao gerador, com `data_realizada`
+e `data_vencimento` em branco — prontas pra editar pelo mesmo lápis que já
+existia. Marca `editado_manual = true` em cada linha, pra diferenciar de
+uma linha que veio da importação de planilha de verdade.
+
+**Sobre as colunas exclusivas da planilha** (`linha_planilha`,
+`cliente_planilha`, `match_status`, etc.) — são obrigatórias na tabela
+(`NOT NULL`) mas não fazem sentido pra um cadastro manual. Preenchi com
+valores neutros só pra satisfazer a constraint: `linha_planilha = 0`,
+`cliente_planilha` = razão social do cliente, `match_status` fica no valor
+padrão da tabela (`sem_match`). Se você quiser um critério diferente pra
+identificar essas linhas depois (num relatório, por exemplo), é só usar o
+`editado_manual = true` — já dá pra filtrar por isso.
+
+**Proteção contra duplicidade — resolvida direto no banco.** Em vez de
+depender do processo externo de importação se comportar bem, adicionamos uma
+constraint `UNIQUE` que torna duplicidade estruturalmente impossível,
+não importa a origem (nosso botão, a importação de planilha, ou um clique
+duplo):
+
+```sql
+alter table preditivas_atg
+  add constraint preditivas_atg_gerador_item_unique unique (gerador_id, item_codigo);
+```
+
+**Confirmado ao vivo antes de aplicar** que não existia nenhuma duplicata
+real (só havia várias linhas com `gerador_id = NULL` — linhas da planilha
+que nunca foram casadas com nenhum cliente; `UNIQUE` no Postgres não
+considera dois `NULL` como iguais, então isso nunca seria um problema).
+Constraint já aplicada com sucesso.
+
+Do lado do front, troquei o `insert()` em lote por um `upsert(...,
+{onConflict: "gerador_id,item_codigo", ignoreDuplicates: true})` — assim, se
+algum dos 7 itens já existir pra aquele gerador, só aquele item é ignorado
+silenciosamente, em vez de a constraint derrubar o lote inteiro (um insert
+comum falharia todo se um único item batesse na constraint).
+
+**Efeito colateral pro processo externo de importação**: se ele tentar
+inserir um item que já existe pra um gerador (porque foi cadastrado manual
+por aqui, ou porque a planilha rodou duas vezes), a inserção dele vai falhar
+com erro de constraint — a não ser que esse processo já use `ON CONFLICT`/
+upsert também. Vale avisar quem mantém esse processo sobre a constraint nova.
+
+### Não testado em navegador
+
+`tsc --noEmit` e `vite build` rodam limpos. Não testei interativamente
+(precisa de um gerador real sem preditiva pra testar, e a criação grava no
+banco de verdade) — recomendo você mesmo testar num gerador de teste antes
+de liberar pro Douglas, conferindo se os 7 itens aparecem e se o lápis
+salva a data de verdade (o bug do `salvar_preditiva` era silencioso, então
+vale essa conferência).
+
+---
+
 ### Não testado em navegador (ajustes 1-6 originais)
 
 Rodei `tsc --noEmit` e `vite build` (ambos limpos), subi o dev server para

@@ -36,6 +36,8 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
   const [oxiBitola, setOxiBitola] = useState("");
   const [savingOxi, setSavingOxi] = useState(false);
 
+  const [cadastrandoPadrao, setCadastrandoPadrao] = useState(false);
+
   const fetchData = async () => {
     if (!supabase) return;
     setLoading(true);
@@ -78,7 +80,9 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
         { data_realizada: editRealizada || null, data_vencimento: editVencimento || null },
         usuario
       );
-      if (!result.ok) throw new Error("O salvamento não foi confirmado pelo backend.");
+      if (!result || typeof result.id !== "number") {
+        throw new Error("O salvamento não foi confirmado pelo backend.");
+      }
 
       setItems((prev) =>
         prev.map((p) =>
@@ -94,6 +98,66 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleCadastrarPreditivaPadrao = async () => {
+    if (!supabase) return;
+    setCadastrandoPadrao(true);
+
+    const { data: catalogo, error: catalogoError } = await supabase
+      .from("preditiva_itens")
+      .select("codigo")
+      .order("ordem", { ascending: true });
+
+    if (catalogoError || !catalogo || catalogo.length === 0) {
+      setCadastrandoPadrao(false);
+      toast.error("Erro ao carregar o catálogo de itens de preditiva.", { description: catalogoError?.message });
+      return;
+    }
+
+    // Linhas manuais seguem a mesma tabela alimentada pela importação de
+    // planilha (preditivas_atg) — campos exclusivos da planilha (linha,
+    // cliente, match) recebem valores neutros só pra satisfazer as colunas
+    // obrigatórias; editado_manual=true marca a origem como manual, não
+    // importação, pra diferenciar no histórico/relatórios.
+    const importId = crypto.randomUUID();
+    const linhas = catalogo.map((item) => ({
+      import_id: importId,
+      linha_planilha: 0,
+      cliente_planilha: gerador.razao_social || gerador.nome_fantasia || "CADASTRO MANUAL",
+      gerador_id: gerador.id,
+      omie_cliente_id: gerador.omie_cliente_id,
+      cnpj_limpo: gerador.cnpj_limpo,
+      item_codigo: item.codigo,
+      editado_manual: true
+    }));
+
+    // upsert + ignoreDuplicates: se algum item já existir pra este gerador
+    // (constraint preditivas_atg_gerador_item_unique — clique duplo, ou já
+    // veio de outro caminho nesse meio-tempo), esse item específico é
+    // ignorado silenciosamente em vez de falhar o lote inteiro.
+    const { error: insertError } = await supabase
+      .from("preditivas_atg")
+      .upsert(linhas, { onConflict: "gerador_id,item_codigo", ignoreDuplicates: true });
+
+    setCadastrandoPadrao(false);
+
+    if (insertError) {
+      toast.error("Erro ao cadastrar itens de preditiva.", { description: insertError.message });
+      return;
+    }
+
+    await registrarLog(
+      "gerador",
+      gerador.id,
+      "cadastrou_preditiva_padrao",
+      usuario,
+      null,
+      { itens: catalogo.map((item) => item.codigo) }
+    );
+
+    toast.success("Itens de preditiva cadastrados! Agora é só preencher as datas de cada um.");
+    fetchData();
   };
 
   const handleSaveOxi = async () => {
@@ -172,13 +236,23 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
   return (
     <div className="space-y-3">
       {items.length === 0 && (
-        <div className="bg-slate-50 border border-slate-100 text-slate-500 text-[11px] rounded-xl px-4 py-3 flex items-start gap-2">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-slate-400" />
-          <span>
-            Nenhum item de preditiva encontrado para este gerador na planilha de importação. Isso costuma acontecer
-            quando o equipamento ainda não foi casado (matching) com a planilha de preditivas — não é um erro do
-            sistema. O item de Oxicatalisador abaixo é cadastrado separadamente e sempre aparece.
-          </span>
+        <div className="bg-slate-50 border border-slate-100 text-slate-500 text-[11px] rounded-xl px-4 py-3 space-y-2.5">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-slate-400" />
+            <span>
+              Nenhum item de preditiva encontrado para este gerador na planilha de importação. Isso costuma acontecer
+              quando o equipamento ainda não foi casado (matching) com a planilha de preditivas — não é um erro do
+              sistema. O item de Oxicatalisador abaixo é cadastrado separadamente e sempre aparece.
+            </span>
+          </div>
+          <button
+            onClick={handleCadastrarPreditivaPadrao}
+            disabled={cadastrandoPadrao}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-500 text-white rounded-lg text-[10px] font-bold hover:bg-brand-600 transition-colors cursor-pointer disabled:opacity-60"
+          >
+            <Save className="w-3.5 h-3.5" />
+            {cadastrandoPadrao ? "Cadastrando..." : "Cadastrar itens padrão de preditiva"}
+          </button>
         </div>
       )}
       <div className="overflow-x-auto border border-slate-100 rounded-xl">

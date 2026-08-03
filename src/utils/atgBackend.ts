@@ -131,8 +131,11 @@ export function validarCadastro(
 
 // ── Fluxo Preditiva: salvar item ──
 
+// Assim como criar_gerador, salvar_preditiva retorna o tipo preditivas_atg
+// (a linha inteira), não um envelope {ok} — confirmado ao vivo via
+// pg_get_function_result(). Sucesso é reconhecido pela presença de um `id`.
 export interface SalvarPreditivaResult extends Mockable {
-  ok: boolean;
+  id: number;
 }
 
 export function salvarPreditiva(
@@ -143,7 +146,7 @@ export function salvarPreditiva(
   return callRpc<SalvarPreditivaResult>(
     "salvar_preditiva",
     { p_id: id, p_campos: campos, p_usuario: usuario },
-    () => ({ ok: true })
+    () => ({ id })
   );
 }
 
