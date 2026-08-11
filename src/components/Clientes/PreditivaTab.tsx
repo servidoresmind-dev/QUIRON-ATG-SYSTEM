@@ -164,17 +164,27 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
     if (!supabase) return;
     setSavingOxi(true);
 
-    const payload = {
-      gerador_id: gerador.id,
+    const camposEditaveis = {
       possui: oxiPossui === "" ? null : oxiPossui === "true",
-      bitola: oxiBitola.trim() || null
+      bitola: oxiBitola.trim() || null,
+      editado_manual: true
     };
 
     // Faz insert ou update conforme já exista um registro — evita depender de uma
     // constraint UNIQUE em gerador_id que não temos como confirmar que existe.
+    // No insert, oxicatalisador_atg tem colunas obrigatórias exclusivas da
+    // importação de planilha (import_id, linha_planilha, cliente_planilha) —
+    // mesma situação de preditivas_atg — que precisam de um valor mesmo pra
+    // uma linha criada manualmente.
     const query = oxi?.id
-      ? supabase.from("oxicatalisador_atg").update(payload).eq("id", oxi.id)
-      : supabase.from("oxicatalisador_atg").insert(payload);
+      ? supabase.from("oxicatalisador_atg").update(camposEditaveis).eq("id", oxi.id)
+      : supabase.from("oxicatalisador_atg").insert({
+          ...camposEditaveis,
+          gerador_id: gerador.id,
+          import_id: crypto.randomUUID(),
+          linha_planilha: 0,
+          cliente_planilha: gerador.razao_social || gerador.nome_fantasia || "CADASTRO MANUAL"
+        });
 
     const { data, error: saveError } = await query.select().maybeSingle();
 
@@ -196,11 +206,11 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
         "editou_oxicatalisador",
         usuario,
         { possui: oxi?.possui ?? null, bitola: oxi?.bitola ?? null },
-        { possui: payload.possui, bitola: payload.bitola }
+        { possui: camposEditaveis.possui, bitola: camposEditaveis.bitola }
       );
     }
 
-    setOxi(data || payload);
+    setOxi(data || (camposEditaveis as unknown as OxicatalisadorAtg));
     toast.success("Oxicatalisador atualizado com sucesso!");
     setEditingOxi(false);
   };

@@ -791,6 +791,67 @@ vale essa conferência).
 
 ---
 
+## Correção — erro ao salvar Oxicatalisador em gerador sem linha ainda
+
+**Reportado pelo Douglas** (mesmo gerador STEMAC GTA testado antes, os 7
+itens de preditiva salvaram normal): ao informar o diâmetro do
+Oxicatalisador, veio o erro `null value in column "import_id" of relation
+"oxicatalisador_atg" violates not-null constraint`.
+
+**Causa**: `oxicatalisador_atg` tem exatamente a mesma estrutura de
+`preditivas_atg` — colunas obrigatórias exclusivas da importação de planilha
+(`import_id uuid not null`, `linha_planilha integer not null`,
+`cliente_planilha text not null`, confirmado via `information_schema.columns`).
+O código que salva o Oxicatalisador (`PreditivaTab.tsx`, escrito antes de
+sabermos dessa estrutura) só preenchia `gerador_id`, `possui`, `bitola` — não
+dava problema em geradores que já tinham uma linha (a planilha já tinha
+preenchido essas colunas antes), só aparecia na primeira vez que alguém
+tentava salvar o Oxicatalisador de um gerador sem nenhuma linha ainda
+(exatamente o caso de um gerador recém-cadastrado manualmente).
+
+**Correção**: `handleSaveOxi` agora preenche `import_id` (gerado na hora),
+`linha_planilha = 0` e `cliente_planilha` (razão social do cliente) **só no
+insert** (quando ainda não existe linha pra esse gerador) — no update, essas
+colunas já têm valor de antes e não precisam ser reenviadas. De brinde,
+passou a marcar `editado_manual = true` tanto no insert quanto no update,
+já que é sempre uma edição feita por humano na tela, nunca pela importação.
+
+### Não testado em navegador
+
+`tsc --noEmit` e `vite build` rodam limpos. Recomendo pedir pro Douglas
+testar de novo no mesmo gerador (STEMAC GTA) informando o diâmetro do
+Oxicatalisador de novo, já que o erro anterior não chegou a gravar nada
+(o insert falhou antes de qualquer coisa ser salva).
+
+---
+
+## Correção — data de preditiva aparecia um dia antes do digitado
+
+**Reportado pelo Douglas**: digitava 02/03/2026 numa data de preditiva e,
+depois de salvar, a tela mostrava 01/03/2026 — em todos os campos de data.
+
+**Causa**: bug clássico de fuso horário do JavaScript, em `formatDate()`
+(`src/utils/date.ts`), usado em várias telas. `data_realizada`/
+`data_vencimento` são datas "puras" (tipo `date` do Postgres, sem hora) —
+mas `formatDate()` fazia `new Date("2026-03-02")`, e o JavaScript interpreta
+uma data sem hora como meia-noite UTC. Convertendo pra horário de Brasília
+(UTC-3) pra extrair dia/mês/ano, o relógio volta pra 21h do dia anterior —
+por isso sempre aparecia um dia a menos. **Era só um bug de exibição**: o
+valor gravado no banco sempre esteve certo (o campo de input não passa pelo
+`formatDate`, só a tabela de leitura), então não há nenhum dado pra corrigir
+retroativamente.
+
+**Correção**: `formatDate()` agora detecta strings no formato `YYYY-MM-DD`
+(sem hora) e extrai dia/mês/ano direto da string, sem nenhuma conversão de
+fuso. Datas com hora completa (ex: os registros do Histórico) continuam
+formatando exatamente como antes.
+
+### Não testado em navegador
+
+`tsc --noEmit` e `vite build` rodam limpos.
+
+---
+
 ### Não testado em navegador (ajustes 1-6 originais)
 
 Rodei `tsc --noEmit` e `vite build` (ambos limpos), subi o dev server para
