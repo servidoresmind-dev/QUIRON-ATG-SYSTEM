@@ -29,6 +29,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editRealizada, setEditRealizada] = useState("");
   const [editVencimento, setEditVencimento] = useState("");
+  const [editNaoAplica, setEditNaoAplica] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [editingOxi, setEditingOxi] = useState(false);
@@ -70,6 +71,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
     setEditingId(item.id);
     setEditRealizada(item.data_realizada || "");
     setEditVencimento(item.data_vencimento || "");
+    setEditNaoAplica(item.nao_aplica || false);
   };
 
   const handleSave = async (item: Preditiva) => {
@@ -77,22 +79,23 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
     try {
       const result = await salvarPreditiva(
         item.id,
-        { data_realizada: editRealizada || null, data_vencimento: editVencimento || null },
+        {
+          data_realizada: editRealizada || null,
+          data_vencimento: editVencimento || null,
+          nao_aplica: editNaoAplica
+        },
         usuario
       );
       if (!result || typeof result.id !== "number") {
         throw new Error("O salvamento não foi confirmado pelo backend.");
       }
 
-      setItems((prev) =>
-        prev.map((p) =>
-          p.id === item.id
-            ? { ...p, data_realizada: editRealizada || null, data_vencimento: editVencimento || null, editado_manual: true }
-            : p
-        )
-      );
       toast.success(`${item.item_nome} atualizado com sucesso!`);
       setEditingId(null);
+      // Refaz a busca em vez de só atualizar o estado local, pra pegar o
+      // `status` recalculado pela view (que muda pra "nao_aplica" quando
+      // esse campo é marcado, e não tinha como calcular isso aqui.
+      fetchData();
     } catch (err: any) {
       toast.error("Erro ao salvar item de preditiva.", { description: err.message });
     } finally {
@@ -288,7 +291,8 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
                       type="date"
                       value={editRealizada}
                       onChange={(e) => setEditRealizada(e.target.value)}
-                      className="px-2 py-1 text-[11px] border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      disabled={editNaoAplica}
+                      className="px-2 py-1 text-[11px] border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50 disabled:bg-slate-50"
                     />
                   ) : (
                     <span className="text-slate-600">{item.data_realizada ? formatDate(item.data_realizada) : "—"}</span>
@@ -300,16 +304,29 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
                       type="date"
                       value={editVencimento}
                       onChange={(e) => setEditVencimento(e.target.value)}
-                      className="px-2 py-1 text-[11px] border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      disabled={editNaoAplica}
+                      className="px-2 py-1 text-[11px] border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50 disabled:bg-slate-50"
                     />
                   ) : (
                     <span className="text-slate-600">{item.data_vencimento ? formatDate(item.data_vencimento) : "—"}</span>
                   )}
                 </td>
                 <td className="py-2 px-3">
-                  <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-lg border ${statusBadge(item.status)}`}>
-                    {item.status || "—"}
-                  </span>
+                  {isEditing ? (
+                    <label className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-slate-600 cursor-pointer whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={editNaoAplica}
+                        onChange={(e) => setEditNaoAplica(e.target.checked)}
+                        className="cursor-pointer"
+                      />
+                      Não se aplica
+                    </label>
+                  ) : (
+                    <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-lg border ${statusBadge(item.status)}`}>
+                      {item.status || "—"}
+                    </span>
+                  )}
                 </td>
                 <td className="py-2 px-3 text-right">
                   {isEditing ? (

@@ -291,6 +291,8 @@ export interface Preditiva {
   dias_para_vencer: number | null;
   status: string | null;
   observacao: string | null;
+  sem_data: boolean;
+  nao_aplica: boolean;
   editado_manual: boolean;
   atualizado_em: string | null;
 }

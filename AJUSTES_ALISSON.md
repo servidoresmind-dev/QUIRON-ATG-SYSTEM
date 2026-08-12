@@ -852,6 +852,41 @@ formatando exatamente como antes.
 
 ---
 
+## Novo — marcar item de preditiva como "Não se aplica"
+
+**Pedido do Douglas**, esclarecido depois de umas idas e vindas: ele queria
+saber se dava pra marcar um item de preditiva como "se aplica"/"não se
+aplica" — e não dava, esse campo (`nao_aplica`, já existia na tabela
+`preditivas_atg` e a view `vw_preditivas` já calculava o `status` como
+`"nao_aplica"` quando ele é `true`) nunca tinha sido exposto em nenhuma tela.
+
+**O que foi implementado** (`src/components/Clientes/PreditivaTab.tsx`): ao
+clicar no lápis pra editar um item, no lugar do badge de status aparece um
+checkbox **"Não se aplica"**. Marcado, desabilita os campos de Data
+Realizada/Vencimento (não faz sentido exigir data de algo que não se
+aplica); ao salvar, grava `nao_aplica = true` — e a view recalcula o status
+pra `"nao_aplica"` automaticamente, sem precisar de nenhuma lógica extra no
+front. Desmarcando de novo, volta ao fluxo normal de data.
+
+**Ajuste técnico junto**: `handleSave` (tanto desse quanto do fluxo de data)
+passou a **recarregar os itens do banco** depois de salvar, em vez de só
+atualizar o estado local na tela — antes disso, o `status` mostrado ficava
+desatualizado até a próxima vez que o modal fosse reaberto (a view calcula o
+status no banco, não dava pra replicar isso no front sem duplicar a lógica).
+Isso corrige de brinde um problema que já existia antes desse pedido.
+
+`types.ts`: `Preditiva` ganhou os campos `sem_data` e `nao_aplica` (a view já
+os retornava, só não estavam declarados no tipo).
+
+### Não testado em navegador
+
+`tsc --noEmit` e `vite build` rodam limpos. Não testei interativamente
+(precisa gravar num item real) — recomendo você testar num gerador de teste
+antes de repassar pro Douglas: marcar "Não se aplica", salvar, conferir que
+o status vira "nao_aplica" e que desmarcar volta ao normal.
+
+---
+
 ### Não testado em navegador (ajustes 1-6 originais)
 
 Rodei `tsc --noEmit` e `vite build` (ambos limpos), subi o dev server para
