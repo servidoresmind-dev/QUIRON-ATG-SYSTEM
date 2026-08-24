@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Edit3, Save, FileText } from "lucide-react";
+import { Edit3, Save, FileText, RefreshCw, ArrowLeft } from "lucide-react";
 import { GeradorAtg, FichaLevantamento, FichaLevantamentoOutroItem } from "../../types";
 import { supabase } from "../../utils/supabase";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ export default function FichaTab({ gerador, usuario, onUpdated }: FichaTabProps)
   const [isEditMode, setIsEditMode] = useState(false);
   const [form, setForm] = useState<FichaLevantamento>(gerador.ficha_levantamento || {});
   const [saving, setSaving] = useState(false);
+  const [mostrandoVincularNova, setMostrandoVincularNova] = useState(false);
 
   if (!gerador.ficha_levantamento) {
     return (
@@ -97,14 +98,23 @@ export default function FichaTab({ gerador, usuario, onUpdated }: FichaTabProps)
             <>Vinculada via O.S. <span className="font-mono font-semibold text-slate-600">{gerador.codigo_os_ficha_levantamento}</span></>
           )}
         </p>
-        {!isEditMode ? (
-          <button
-            onClick={() => setIsEditMode(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 border border-brand-100 text-brand-700 rounded-lg text-xs font-bold hover:bg-brand-100 transition-colors cursor-pointer"
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-            <span>Editar Ficha</span>
-          </button>
+        {mostrandoVincularNova ? null : !isEditMode ? (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMostrandoVincularNova(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Vincular Ficha Mais Atual</span>
+            </button>
+            <button
+              onClick={() => setIsEditMode(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 border border-brand-100 text-brand-700 rounded-lg text-xs font-bold hover:bg-brand-100 transition-colors cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Editar Ficha</span>
+            </button>
+          </div>
         ) : (
           <button
             onClick={handleSave}
@@ -117,6 +127,27 @@ export default function FichaTab({ gerador, usuario, onUpdated }: FichaTabProps)
         )}
       </div>
 
+      {mostrandoVincularNova ? (
+        <div className="space-y-3">
+          <button
+            onClick={() => setMostrandoVincularNova(false)}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Cancelar e voltar pra ficha atual</span>
+          </button>
+          <VincularOsWizard
+            gerador={gerador}
+            usuario={usuario}
+            substituindoExistente
+            onLinked={(updated) => {
+              onUpdated(updated);
+              setForm(updated.ficha_levantamento || {});
+              setMostrandoVincularNova(false);
+            }}
+          />
+        </div>
+      ) : (
       <div className="space-y-4">
         {secoes.length === 0 && outros.length === 0 ? (
           <p className="text-xs text-slate-400 text-center py-4">Ficha vinculada, mas sem seções preenchidas.</p>
@@ -204,6 +235,7 @@ export default function FichaTab({ gerador, usuario, onUpdated }: FichaTabProps)
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

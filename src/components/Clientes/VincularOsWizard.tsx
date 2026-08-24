@@ -10,13 +10,16 @@ interface VincularOsWizardProps {
   gerador: GeradorAtg;
   usuario: string;
   onLinked: (updated: GeradorAtg) => void;
+  // true quando o gerador já tem uma ficha vinculada e essa busca vai
+  // substituir pela mais recente — mostra um aviso extra antes de confirmar.
+  substituindoExistente?: boolean;
 }
 
 function isSubObjeto(valor: unknown): valor is Record<string, string> {
   return valor != null && typeof valor === "object" && !Array.isArray(valor);
 }
 
-export default function VincularOsWizard({ gerador, usuario, onLinked }: VincularOsWizardProps) {
+export default function VincularOsWizard({ gerador, usuario, onLinked, substituindoExistente }: VincularOsWizardProps) {
   const [codigoOs, setCodigoOs] = useState("");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<{ tipo: TipoErroWebhook; mensagem: string } | null>(null);
@@ -149,6 +152,16 @@ export default function VincularOsWizard({ gerador, usuario, onLinked }: Vincula
             <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
             <span>Checklist #{preview.checklistId} encontrado. Confira os dados abaixo antes de confirmar.</span>
           </div>
+
+          {substituindoExistente && (
+            <div className="bg-amber-50 border border-amber-100 text-amber-800 text-xs font-semibold rounded-xl px-4 py-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                Este gerador já tem uma ficha vinculada. Confirmar aqui vai substituir a ficha atual por esta.
+                A ficha anterior fica registrada no Histórico, caso precise reverter.
+              </span>
+            </div>
+          )}
 
           <div className="max-h-64 overflow-y-auto space-y-3 border border-slate-100 rounded-xl p-3">
             {Object.entries(preview.ficha)

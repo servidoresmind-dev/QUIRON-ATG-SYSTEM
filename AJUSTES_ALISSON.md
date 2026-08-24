@@ -887,6 +887,56 @@ o status vira "nao_aplica" e que desmarcar volta ao normal.
 
 ---
 
+## Novo — vincular uma ficha de levantamento mais atual (substituindo a antiga)
+
+**Pedido do Douglas**: alguns clientes têm mais de uma ficha de levantamento
+no iClass (ex: "Saúde da Família", levantamentos repetidos ao longo do
+tempo), e ele queria puxar a mais recente pro gerador — mas "Editar Ficha"
+só deixa editar campo por campo o que já está preenchido, não tem opção de
+buscar/trocar por uma ficha diferente.
+
+**Causa**: `FichaTab.tsx` só renderizava o `VincularOsWizard` (a busca por
+O.S. no iClass) quando o gerador **ainda não tinha nenhuma ficha**
+(`!gerador.ficha_levantamento`). Depois de vincular a primeira vez, esse
+caminho desaparecia de vez da tela — não por regra de negócio, só porque
+ninguém tinha pedido essa opção antes.
+
+**O que foi implementado**: novo botão **"Vincular Ficha Mais Atual"** ao
+lado de "Editar Ficha" (só aparece fora do modo de edição), que abre o
+mesmo `VincularOsWizard` de sempre — busca por código de O.S., confere os
+dados, confirma. Ao confirmar, **substitui** a ficha atual pela nova (mesmo
+comportamento de update que já existia; nada novo no banco). Adicionei um
+aviso amarelo nessa situação avisando que vai substituir a ficha atual — e
+é seguro, porque o log da ação já grava a ficha anterior inteira em
+`valor_antes`, então dá pra reverter pelo Histórico se precisar (não
+precisei mudar nada em `Historico.tsx` pra isso, a lógica de "Reverter" já
+é genérica por nome de ação).
+
+**Correção de bug encontrado ao testar** (reportado pelo Alisson com print
+de tela real, não só foto — o que ajudou a confirmar que era de verdade):
+a primeira versão abria essa busca dentro de um `Modal` novo, por cima do
+modal do gerador que já estava aberto. Dois modais empilhados, cada um com
+seu próprio efeito de desfoque de tela cheia (`backdrop-blur`), fazem o
+navegador renderizar esse desfoque errado, "esvaziando" pedaços visuais do
+modal de trás — sintoma exatamente como o print mostrou (faixas em branco
+nas bordas do modal de trás). Corrigido trocando o modal aninhado por uma
+troca de conteúdo **dentro da própria aba** (mesmo padrão que já existia
+quando o gerador não tem nenhuma ficha ainda) — sem abrir uma segunda
+camada de modal, sem mais o problema visual.
+
+**Segunda dúvida do Douglas, sem mudança de código** (respondida direto):
+sim, pode cadastrar vários geradores pro mesmo cliente mesmo que estejam em
+endereços físicos diferentes — o sistema não tem nenhuma restrição de "um
+gerador por endereço" ou limite de geradores por cliente.
+
+### Não testado em navegador
+
+`tsc --noEmit` e `vite build` rodam limpos. Não testei interativamente
+(precisa de um gerador real com ficha já vinculada) — recomendo testar num
+gerador de teste antes de repassar pro Douglas.
+
+---
+
 ### Não testado em navegador (ajustes 1-6 originais)
 
 Rodei `tsc --noEmit` e `vite build` (ambos limpos), subi o dev server para
