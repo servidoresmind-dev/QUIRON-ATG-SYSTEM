@@ -945,3 +945,39 @@ comportamento de banco por trás dos itens 5/6 via curl (acima). Não fiz teste
 interativo completo dos 6 fluxos no navegador porque não há login de teste
 configurado no ambiente. Recomendo um teste manual passando por cada um dos 6
 itens antes de liberar para o cliente.
+
+---
+
+## Novo — Perfil Vendedor, atribuição de vendedor ao cliente e Relatório de Saúde do Gerador (PDF)
+
+Entregue em etapas (2A a 8), cada uma conferida antes da seguinte. Resumo do que
+mudou e do que **já está no banco / na função** (aplicado à parte, não vem no deploy do front).
+
+### O que o usuário passa a ter
+- **Perfil "Vendedor"** (Controle de Usuários): vê só os clientes atribuídos ao vendedor ligado ao
+  login dele, em **somente leitura** (sem criar/corrigir/validar/excluir; sem editar ficha nem preditiva).
+- **Seção "Vendedores"** em Controle de Usuários: cadastro, edição e ativar/desativar. Desativar só
+  tira o vendedor da lista de atribuição — o login é controlado à parte.
+- **Vínculo login ↔ vendedor** (obrigatório para perfil Vendedor) e **botão "Definir senha"** (chave) por usuário.
+- **Dropdown "Vendedor" no cliente** (só Administrador), etiqueta no cartão e filtro por vendedor
+  ("Sem vendedor" ajuda a percorrer a base). Cada atribuição vai para o Histórico e pode ser revertida.
+- **"Gerar Relatório"** no gerador → página `#/relatorio/<id>` com dois modelos: Caminho 1 (em dia) e
+  Caminho 2 (vencida / a vencer / sem data). **"Baixar PDF"** usa a impressão do navegador (A4).
+  O vendedor só abre o relatório de cliente dele.
+
+### Já aplicado fora do deploy do front (conferir se for recriar o ambiente)
+- **Banco** (só adições): tabela `vendedores` (nome, email, omie_vendedor_id, auth_user_id, ativo) e coluna
+  `omie_clientes.vendedor_id`. Os 17 vendedores foram copiados de `"vendedores omie"` (tabela original intacta).
+- **Edge Function `manage-users`** (publicada manualmente no painel): aceita o perfil `vendedor`, decide
+  permissões **só por `app_metadata`** (antes lia `user_metadata`, que o próprio usuário podia alterar),
+  vincula login a vendedor e tem a ação `setPassword`. Versões anteriores guardadas em `docs/backups/`.
+- Os 3 usuários existentes foram migrados para `app_metadata` (conferido por SQL).
+
+### Atenção ao subir
+- O front novo lê perfil/páginas **só de `app_metadata`**: sessões abertas antes da migração ficam sem perfil
+  até **sair e entrar de novo** (aparece "Nenhuma página liberada" com botão Sair — é esperado, não é defeito).
+- Pendências conhecidas: tabela de backup `omie_clientes_bkp_20261008` (apagar quando tudo estiver estável),
+  usuário/vendedor de teste a remover, RLS ainda desligada (a restrição do vendedor é de tela — etapa à parte),
+  e regra de saúde **estrita** (sem data impede 100%): `semDataImpede100` em `src/utils/saudeGerador.ts`.
+- PDF pelo navegador: o usuário precisa escolher "Salvar como PDF" e desmarcar "Cabeçalhos e rodapés".
+  Download direto em um clique (biblioteca) ficou como possível evolução, a depender da administração.
