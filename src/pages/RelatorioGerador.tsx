@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, AlertTriangle, RefreshCw, ShieldAlert, CheckCircle2, Info } from "lucide-react";
+import { ArrowLeft, AlertTriangle, RefreshCw, ShieldAlert, CheckCircle2, Info, Download } from "lucide-react";
 import { GeradorAtg, OxicatalisadorAtg, PerfilUsuario, Preditiva, Vendedor } from "../types";
 import { supabase, isSupabaseConfigured } from "../utils/supabase";
 import { navigateTo } from "../utils/navigation";
@@ -237,9 +237,42 @@ export default function RelatorioGerador({ geradorId, activeRole }: RelatorioGer
   const { totais, pendencias, caminho, percentual } = saude;
   const emDia = caminho === 1;
 
+  // O navegador sugere o título da página como nome do arquivo ao "Salvar como
+  // PDF" — então o título vira o nome do relatório só durante a impressão.
+  const handleBaixarPdf = () => {
+    const nomeCliente = cliente.nome_fantasia || cliente.razao_social || "Cliente";
+    const serie = gerador.num_serie ? ` - Serie ${gerador.num_serie}` : "";
+    const nomeArquivo = `Relatorio de Saude - ${nomeCliente}${serie}`.replace(/[\\/:*?"<>|]/g, " ").trim();
+
+    const tituloAnterior = document.title;
+    const restaurar = () => {
+      document.title = tituloAnterior;
+      window.removeEventListener("afterprint", restaurar);
+    };
+    window.addEventListener("afterprint", restaurar);
+    document.title = nomeArquivo;
+    window.print();
+  };
+
   return (
     <div id="relatorio-page" className="space-y-4">
-      <div className="flex items-center justify-between gap-3">{voltar}</div>
+      <div className="no-print flex flex-wrap items-center justify-between gap-3">
+        {voltar}
+        <div className="flex items-center gap-3">
+          <p className="hidden md:block text-[11px] text-slate-400 max-w-[320px] text-right leading-snug">
+            Na janela que abrir, escolha <strong className="text-slate-500">Salvar como PDF</strong> e desmarque{" "}
+            <strong className="text-slate-500">Cabeçalhos e rodapés</strong>.
+          </p>
+          <button
+            id="relatorio-baixar-pdf"
+            onClick={handleBaixarPdf}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-500 text-white rounded-xl font-bold text-xs hover:bg-brand-600 transition-colors shadow-soft cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Baixar PDF</span>
+          </button>
+        </div>
+      </div>
 
       {/* Folha do relatório — largura de uma página A4 */}
       <article

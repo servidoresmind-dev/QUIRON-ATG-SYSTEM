@@ -230,7 +230,7 @@ export default function App() {
       <Sidebar currentPath={route.path} allowedPages={allowedPages} />
 
       {/* Main Content Layout Wrapper */}
-      <div className="flex-1 pl-28 md:pl-32 pr-4 md:pr-6 flex flex-col min-h-screen py-4">
+      <div id="app-content" className="flex-1 pl-28 md:pl-32 pr-4 md:pr-6 flex flex-col min-h-screen py-4">
         {/* Horizontal Navigation Header */}
         <Topbar
           currentPath={route.path}

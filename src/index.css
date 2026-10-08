@@ -100,3 +100,56 @@ body {
   }
 }
 
+
+/* ── Impressão / "Salvar como PDF" (relatório de saúde do gerador) ──
+   Esconde o menu, a barra superior e o que for só de tela, e faz a folha do
+   relatório ocupar a página A4. Só vale ao imprimir: não altera a tela. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  /* Layout em bloco (não flex) para a paginação não cortar o conteúdo. */
+  #app-root {
+    display: block !important;
+    min-height: 0 !important;
+    background: #fff !important;
+  }
+
+  #app-content {
+    display: block !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+
+  #app-content main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  #sidebar,
+  #topbar,
+  .no-print,
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+
+  #relatorio-saude {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    /* Mantém as cores de fundo e as bordas das faixas e etiquetas. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
