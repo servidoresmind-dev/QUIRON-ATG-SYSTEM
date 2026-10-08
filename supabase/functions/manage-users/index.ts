@@ -29,19 +29,18 @@ type MetaUser = {
 
 // Perfil oficial do usuário. `app_metadata` só pode ser escrito aqui no servidor
 // (com a service_role); já `user_metadata` o próprio usuário logado consegue
-// alterar pelo navegador — por isso a decisão de "quem é admin" não pode
-// depender dele.
-// FASE 1 (transição): enquanto o usuário não foi migrado para app_metadata, cai
-// para user_metadata para ninguém perder acesso. A FASE 2 remove este fallback.
+// alterar pelo navegador — por isso a decisão de "quem é admin" NUNCA lê dele.
+// Usuário sem perfil em app_metadata (ex.: conta criada fora do app) falha
+// fechado: não é admin e não tem página nenhuma até um admin editar o cadastro.
 function perfilOf(u: MetaUser): string {
-  const raw = u.app_metadata?.perfil ?? u.user_metadata?.perfil;
+  const raw = u.app_metadata?.perfil;
   return PERFIS_VALIDOS.includes(raw) ? raw : "usuario_comum";
 }
 
 function paginasOf(u: MetaUser): string[] | null {
-  const src = u.app_metadata?.perfil !== undefined
-    ? u.app_metadata?.paginas_permitidas
-    : u.user_metadata?.paginas_permitidas;
+  if (u.app_metadata?.perfil === undefined) return [];
+  const src = u.app_metadata.paginas_permitidas;
+  // null = administrador, ou comum legado criado antes da checklist (acesso total antigo).
   return Array.isArray(src) ? src : null;
 }
 
@@ -95,26 +94,9 @@ Deno.serve(async (req) => {
       const { data, error } = await adminClient.auth.admin.listUsers({ perPage: 1000 });
       if (error) throw error;
 
-      // Migração preguiçosa (idempotente): quem ainda não tem perfil em
-      // app_metadata recebe uma cópia do que está em user_metadata, sem mudar
-      // o acesso de ninguém. Falha em um usuário não derruba a listagem — o
-      // fallback de perfilOf() continua valendo para ele.
-      let migrados = 0;
-      let falhas = 0;
-      for (const u of data.users) {
-        if (u.app_metadata?.perfil !== undefined) continue;
-        const { data: upd, error: updErr } = await adminClient.auth.admin.updateUserById(u.id, {
-          app_metadata: { perfil: perfilOf(u), paginas_permitidas: paginasOf(u) }
-        });
-        if (updErr || !upd?.user) {
-          falhas++;
-          console.error("Falha ao migrar app_metadata", u.id, updErr?.message);
-          continue;
-        }
-        u.app_metadata = upd.user.app_metadata;
-        migrados++;
-      }
-
+      // A migração preguiçosa da Fase 1 foi removida de propósito: copiar de
+      // user_metadata para app_metadata reabriria a brecha (um usuário poderia
+      // se declarar admin em user_metadata e ser "promovido" pela cópia).
       const usuarios = data.users.map((u) => ({
         id: u.id,
         nome: (u.user_metadata?.nome as string) || u.email || "Sem nome",
@@ -126,7 +108,7 @@ Deno.serve(async (req) => {
         criado_em: u.created_at
       }));
 
-      return json({ usuarios, migrados, falhas });
+      return json({ usuarios });
     }
 
     if (action === "invite") {
@@ -152,14 +134,17 @@ Deno.serve(async (req) => {
       if (error) throw error;
 
       // inviteUserByEmail só aceita user_metadata; o perfil "oficial" vai em
-      // app_metadata num segundo passo. Se este passo falhar, o usuário já foi
-      // convidado — não devolve erro (um novo convite daria "já cadastrado");
-      // a migração preguiçosa do `list` completa na próxima listagem.
+      // app_metadata num segundo passo. Se este falhar, o usuário já existe mas
+      // sem perfil (falha fechado: sem nenhum acesso) — avisa para o admin
+      // abrir o cadastro e salvar de novo, o que grava o perfil.
       const { error: appMetaError } = await adminClient.auth.admin.updateUserById(data.user.id, {
         app_metadata: { perfil, paginas_permitidas: paginasFor(perfil, paginas_permitidas) }
       });
       if (appMetaError) {
         console.error("Falha ao gravar app_metadata no convite", data.user.id, appMetaError.message);
+        return json({
+          error: "Convite enviado, mas as permissões não foram gravadas. Edite o usuário e salve para concluir."
+        }, 500);
       }
 
       return json({ user: data.user });
@@ -177,7 +162,8 @@ Deno.serve(async (req) => {
       }
 
       const { data, error } = await adminClient.auth.admin.updateUserById(id, {
-        // user_metadata segue sendo gravado enquanto o front ainda lê dele (Fase 1).
+        // user_metadata segue sendo gravado só por compatibilidade com o front antigo
+        // (publicado), que ainda lê o perfil dele. Esta função NÃO lê mais daqui.
         user_metadata: {
           nome,
           perfil,

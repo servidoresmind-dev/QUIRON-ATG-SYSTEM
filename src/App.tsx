@@ -35,16 +35,24 @@ interface CurrentUser {
 }
 
 function mapSupabaseUser(user: User): CurrentUser {
-  const metaPerfil = user.user_metadata?.perfil;
+  // Perfil e páginas vêm de app_metadata, que só o servidor consegue escrever.
+  // user_metadata o próprio usuário edita pelo navegador — serve só para o nome.
+  // Sem perfil em app_metadata (token anterior à migração ou conta criada fora
+  // do app) falha fechado: Usuário Comum sem nenhuma página, até entrar de novo.
+  const appMeta = user.app_metadata ?? {};
+  const metaPerfil = appMeta.perfil;
   const perfil =
     metaPerfil === PerfilUsuario.ADMIN
       ? PerfilUsuario.ADMIN
       : metaPerfil === PerfilUsuario.VENDEDOR
         ? PerfilUsuario.VENDEDOR
         : PerfilUsuario.COMUM;
-  const paginasPermitidas = Array.isArray(user.user_metadata?.paginas_permitidas)
-    ? (user.user_metadata.paginas_permitidas as string[])
-    : null;
+  const paginasPermitidas =
+    metaPerfil === undefined
+      ? []
+      : Array.isArray(appMeta.paginas_permitidas)
+        ? (appMeta.paginas_permitidas as string[])
+        : null;
   return {
     email: user.email || "",
     nome: (user.user_metadata?.nome as string) || user.email || "Usuário",
