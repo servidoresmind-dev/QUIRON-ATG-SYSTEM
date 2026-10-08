@@ -14,7 +14,8 @@ import {
   Edit2,
   ArrowRight,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  KeyRound
 } from "lucide-react";
 import { Usuario, PerfilUsuario, Vendedor } from "../types";
 import { navigateTo } from "../utils/navigation";
@@ -83,6 +84,47 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
   // está ligado a este usuário (mesmo que tenha sido desativado depois).
   const vendedoresDisponiveis = (vinculadoId: number | null) =>
     vendedores.filter((v) => (v.ativo && !v.auth_user_id) || v.id === vinculadoId);
+
+  // Definir senha (Etapa 3C) — o admin define e repassa ao usuário por canal seguro.
+  const [passwordTarget, setPasswordTarget] = useState<Usuario | null>(null);
+  const [pwd1, setPwd1] = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const [savingPwd, setSavingPwd] = useState(false);
+
+  const closePasswordModal = () => {
+    setPasswordTarget(null);
+    setPwd1("");
+    setPwd2("");
+  };
+
+  const handleSetPassword = async () => {
+    if (!passwordTarget) return;
+    if (pwd1.length < 8) {
+      toast.error("A senha deve ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (pwd1.length > 72) {
+      toast.error("A senha deve ter no máximo 72 caracteres.");
+      return;
+    }
+    if (pwd1 !== pwd2) {
+      toast.error("As duas senhas não são iguais.");
+      return;
+    }
+
+    setSavingPwd(true);
+    try {
+      await invokeManageUsers({ action: "setPassword", id: passwordTarget.id, password: pwd1 });
+      toast.success(`Senha de ${passwordTarget.nome} definida!`, {
+        description: "Informe a senha ao usuário por um canal seguro."
+      });
+      closePasswordModal();
+    } catch (err: any) {
+      toast.error("Erro ao definir a senha.", { description: err.message });
+    } finally {
+      setSavingPwd(false);
+    }
+  };
 
   const togglePagina = (
     paginas: string[],
@@ -456,6 +498,16 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
 
+                        {/* Definir senha */}
+                        <button
+                          id={`user-password-${u.id}`}
+                          onClick={() => setPasswordTarget(u)}
+                          className="p-1.5 text-slate-400 hover:text-brand-500 hover:bg-brand-50 rounded-lg transition-colors cursor-pointer"
+                          title="Definir senha"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                        </button>
+
                         {/* Deactivate Toggle */}
                         {!isSelf && (
                           <button
@@ -637,6 +689,72 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                 )}
               </div>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAL: DEFINIR SENHA */}
+      {passwordTarget && (
+        <Modal
+          id="password-user-modal"
+          isOpen={true}
+          onClose={closePasswordModal}
+          title={`Definir Senha: ${passwordTarget.nome}`}
+          footer={
+            <div className="flex gap-2">
+              <button
+                id="password-cancel"
+                onClick={closePasswordModal}
+                className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl font-semibold text-xs hover:bg-slate-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                id="password-save"
+                onClick={handleSetPassword}
+                disabled={savingPwd}
+                className="px-4 py-2 bg-brand-500 text-white rounded-xl font-bold text-xs hover:bg-brand-600 transition-colors shadow-soft cursor-pointer disabled:opacity-60"
+              >
+                {savingPwd ? "Salvando..." : "Definir Senha"}
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-start gap-2.5">
+              <KeyRound className="w-5 h-5 text-brand-500 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-slate-500 leading-snug">
+                A nova senha vale imediatamente para <strong>{passwordTarget.email}</strong>. O sistema não guarda nem
+                mostra a senha depois — repasse ao usuário por um canal seguro.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-500">Nova senha * (8 a 72 caracteres)</label>
+              <input
+                id="pwd-new"
+                type="password"
+                autoComplete="new-password"
+                value={pwd1}
+                onChange={(e) => setPwd1(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-500">Repita a senha *</label>
+              <input
+                id="pwd-confirm"
+                type="password"
+                autoComplete="new-password"
+                value={pwd2}
+                onChange={(e) => setPwd2(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+              {pwd2 !== "" && pwd1 !== pwd2 && (
+                <p className="text-[10px] text-rose-500 font-semibold">As duas senhas não são iguais.</p>
+              )}
+            </div>
           </div>
         </Modal>
       )}

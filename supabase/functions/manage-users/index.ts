@@ -281,6 +281,26 @@ Deno.serve(async (req) => {
       return json({ user: data.user });
     }
 
+    if (action === "setPassword") {
+      const { id, password } = payload;
+      if (!id) return json({ error: "ID do usuário é obrigatório." }, 400);
+      // 72 = limite do bcrypt (acima disso o excedente seria ignorado em silêncio).
+      if (typeof password !== "string" || password.length < 8 || password.length > 72) {
+        return json({ error: "A senha deve ter entre 8 e 72 caracteres." }, 400);
+      }
+
+      // email_confirm: um convite nunca aceito deixa o e-mail "não confirmado", e
+      // sem isso o login com senha seria recusado mesmo com a senha certa.
+      const { error } = await adminClient.auth.admin.updateUserById(id, {
+        password,
+        email_confirm: true
+      });
+      if (error) throw error;
+
+      // Nunca devolve nem registra a senha.
+      return json({ ok: true });
+    }
+
     if (action === "toggleActive") {
       const { id, ativo } = payload;
       if (!id) return json({ error: "ID do usuário é obrigatório." }, 400);
