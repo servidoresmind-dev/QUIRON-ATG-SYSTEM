@@ -60,6 +60,8 @@ export default function Clientes({ activeRole }: ClientesProps) {
   // Lista de vendedores para a etiqueta, o filtro e o dropdown de atribuição.
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [atribuindoId, setAtribuindoId] = useState<number | null>(null);
+  // Só para o perfil Vendedor: o vendedor ligado a este login (null = sem vínculo).
+  const [meuVendedorId, setMeuVendedorId] = useState<number | null>(null);
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [validating, setValidating] = useState(false);
@@ -114,15 +116,45 @@ export default function Clientes({ activeRole }: ClientesProps) {
     }
 
     const extraById = new Map((statusData || []).map((s: any) => [s.id, s]));
-    setClientes(
-      (data || []).map((c) => ({
-        ...c,
-        inativo: Boolean(extraById.get(c.id)?.inativo),
-        iclass_nome: extraById.get(c.id)?.iclass_nome ?? null,
-        iclass_pendente: Boolean(extraById.get(c.id)?.iclass_pendente),
-        vendedor_id: extraById.get(c.id)?.vendedor_id ?? null
-      }))
-    );
+    let lista: ClienteCard[] = (data || []).map((c) => ({
+      ...c,
+      inativo: Boolean(extraById.get(c.id)?.inativo),
+      iclass_nome: extraById.get(c.id)?.iclass_nome ?? null,
+      iclass_pendente: Boolean(extraById.get(c.id)?.iclass_pendente),
+      vendedor_id: extraById.get(c.id)?.vendedor_id ?? null
+    }));
+
+    // Vendedor só enxerga os clientes atribuídos ao vendedor ligado ao login dele.
+    // Qualquer falha em descobrir isso NÃO cai para "mostrar tudo": a lista fica
+    // vazia/com erro (falha fechado). Obs.: é um filtro de tela — a barreira real
+    // no banco (RLS) é uma etapa à parte.
+    if (activeRole === PerfilUsuario.VENDEDOR) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id;
+
+      if (statusError || !userId) {
+        setError("Não foi possível identificar os clientes do seu vendedor. Tente novamente.");
+        setLoading(false);
+        return;
+      }
+
+      const { data: meuVendedor, error: meuVendedorError } = await supabase
+        .from("vendedores")
+        .select("id")
+        .eq("auth_user_id", userId)
+        .maybeSingle();
+
+      if (meuVendedorError) {
+        setError(meuVendedorError.message);
+        setLoading(false);
+        return;
+      }
+
+      setMeuVendedorId(meuVendedor?.id ?? null);
+      lista = meuVendedor ? lista.filter((c) => c.vendedor_id === meuVendedor.id) : [];
+    }
+
+    setClientes(lista);
 
     // Vendedores (só leitura). Se falhar, os cartões seguem funcionando sem a etiqueta.
     const { data: vendData, error: vendError } = await supabase
@@ -421,13 +453,25 @@ export default function Clientes({ activeRole }: ClientesProps) {
           </button>
         </div>
       ) : filteredList.length === 0 ? (
-        <EmptyState
-          id="clientes-empty"
-          title="Nenhum cliente encontrado"
-          description="Nenhum registro encontrado para os filtros aplicados."
-          actionText={hasActiveFilters ? "Limpar filtros" : undefined}
-          onAction={hasActiveFilters ? handleClearFilters : undefined}
-        />
+        activeRole === PerfilUsuario.VENDEDOR && !hasActiveFilters ? (
+          <EmptyState
+            id="clientes-empty-vendedor"
+            title={meuVendedorId === null ? "Seu login ainda não está vinculado a um vendedor" : "Nenhum cliente atribuído a você"}
+            description={
+              meuVendedorId === null
+                ? "Peça a um administrador para vincular o seu login a um vendedor em Controle de Usuários."
+                : "Quando um administrador atribuir clientes a você, eles aparecem aqui."
+            }
+          />
+        ) : (
+          <EmptyState
+            id="clientes-empty"
+            title="Nenhum cliente encontrado"
+            description="Nenhum registro encontrado para os filtros aplicados."
+            actionText={hasActiveFilters ? "Limpar filtros" : undefined}
+            onAction={hasActiveFilters ? handleClearFilters : undefined}
+          />
+        )
       ) : (
         <div className="space-y-3" id="clientes-list">
           {filteredList.map((cliente) => {
