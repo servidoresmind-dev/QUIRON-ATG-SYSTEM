@@ -18,9 +18,10 @@ import {
   Edit3,
   UserPlus,
   FileSearch,
-  Trash2
+  Trash2,
+  Briefcase
 } from "lucide-react";
-import { ClienteCard, GeradorAtg, EstadoClienteCard, PerfilUsuario } from "../types";
+import { ClienteCard, GeradorAtg, EstadoClienteCard, PerfilUsuario, Vendedor } from "../types";
 import { supabase, isSupabaseConfigured } from "../utils/supabase";
 import { toast } from "sonner";
 import FilterBar from "../components/ui/FilterBar";
@@ -53,6 +54,12 @@ export default function Clientes({ activeRole }: ClientesProps) {
 
   const [search, setSearch] = useState("");
   const [filterEstado, setFilterEstado] = useState("");
+  // "" = todos, "sem" = clientes sem vendedor, ou o id do vendedor (como texto).
+  const [filterVendedor, setFilterVendedor] = useState("");
+
+  // Lista de vendedores para a etiqueta, o filtro e o dropdown de atribuição.
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [atribuindoId, setAtribuindoId] = useState<number | null>(null);
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [validating, setValidating] = useState(false);
@@ -100,7 +107,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
     // à parte em omie_clientes (1 query só, não uma por card) e mescla localmente.
     const { data: statusData, error: statusError } = await supabase
       .from("omie_clientes")
-      .select("id, inativo, iclass_nome, iclass_pendente");
+      .select("id, inativo, iclass_nome, iclass_pendente, vendedor_id");
 
     if (statusError) {
       console.warn("Não foi possível carregar o status ativo/inativo dos clientes.", statusError.message);
@@ -112,9 +119,18 @@ export default function Clientes({ activeRole }: ClientesProps) {
         ...c,
         inativo: Boolean(extraById.get(c.id)?.inativo),
         iclass_nome: extraById.get(c.id)?.iclass_nome ?? null,
-        iclass_pendente: Boolean(extraById.get(c.id)?.iclass_pendente)
+        iclass_pendente: Boolean(extraById.get(c.id)?.iclass_pendente),
+        vendedor_id: extraById.get(c.id)?.vendedor_id ?? null
       }))
     );
+
+    // Vendedores (só leitura). Se falhar, os cartões seguem funcionando sem a etiqueta.
+    const { data: vendData, error: vendError } = await supabase
+      .from("vendedores")
+      .select("*")
+      .order("nome", { ascending: true });
+    if (vendError) console.warn("Não foi possível carregar os vendedores.", vendError.message);
+    setVendedores(vendData || []);
 
     setLoading(false);
   };
@@ -129,9 +145,51 @@ export default function Clientes({ activeRole }: ClientesProps) {
   const handleClearFilters = () => {
     setSearch("");
     setFilterEstado("");
+    setFilterVendedor("");
   };
 
-  const hasActiveFilters = search !== "" || filterEstado !== "";
+  const hasActiveFilters = search !== "" || filterEstado !== "" || filterVendedor !== "";
+
+  const vendedorNome = (id: number | null) =>
+    id === null ? null : vendedores.find((v) => v.id === id)?.nome ?? `Vendedor #${id}`;
+
+  // Opções do dropdown: vendedores ativos, mais o atual do cliente (mesmo que desativado depois).
+  const vendedoresDisponiveis = (atualId: number | null) =>
+    vendedores.filter((v) => v.ativo || v.id === atualId);
+
+  const handleAtribuirVendedor = async (cliente: ClienteCard, novoId: number | null) => {
+    if (!supabase || novoId === cliente.vendedor_id) return;
+    setAtribuindoId(cliente.id);
+
+    const { error: updateError } = await supabase
+      .from("omie_clientes")
+      .update({ vendedor_id: novoId })
+      .eq("id", cliente.id);
+
+    setAtribuindoId(null);
+
+    if (updateError) {
+      toast.error("Erro ao atribuir vendedor.", { description: updateError.message });
+      return;
+    }
+
+    // valor_antes/valor_depois permitem "Reverter" pelo Histórico (update parcial em omie_clientes).
+    await registrarLog(
+      "cliente",
+      cliente.id,
+      "atribuiu_vendedor",
+      currentUserEmail,
+      { vendedor_id: cliente.vendedor_id },
+      { vendedor_id: novoId }
+    );
+
+    setClientes((prev) => prev.map((c) => (c.id === cliente.id ? { ...c, vendedor_id: novoId } : c)));
+    toast.success(
+      novoId === null
+        ? `Vendedor removido de ${cliente.razao_social || "cliente"}.`
+        : `${vendedorNome(novoId)} atribuído a ${cliente.razao_social || "cliente"}.`
+    );
+  };
 
   const filteredList = useMemo(() => {
     return clientes.filter((c) => {
@@ -145,9 +203,11 @@ export default function Clientes({ activeRole }: ClientesProps) {
         if (!matches) return false;
       }
       if (filterEstado && c.estado !== filterEstado) return false;
+      if (filterVendedor === "sem" && c.vendedor_id !== null) return false;
+      if (filterVendedor && filterVendedor !== "sem" && String(c.vendedor_id) !== filterVendedor) return false;
       return true;
     });
-  }, [clientes, search, filterEstado]);
+  }, [clientes, search, filterEstado, filterVendedor]);
 
   const filterFields = [
     {
@@ -159,7 +219,22 @@ export default function Clientes({ activeRole }: ClientesProps) {
         label: ESTADO_INFO[k].label
       })),
       onChange: setFilterEstado
-    }
+    },
+    // Filtro por vendedor só para o Administrador (é quem faz a atribuição).
+    ...(activeRole === PerfilUsuario.ADMIN
+      ? [
+          {
+            key: "vendedor",
+            label: "Vendedor",
+            value: filterVendedor,
+            options: [
+              { value: "sem", label: "Sem vendedor" },
+              ...vendedores.map((v) => ({ value: String(v.id), label: v.ativo ? v.nome : `${v.nome} (desativado)` }))
+            ],
+            onChange: setFilterVendedor
+          }
+        ]
+      : [])
   ];
 
   const toggleExpand = (id: number) => {
@@ -390,6 +465,18 @@ export default function Clientes({ activeRole }: ClientesProps) {
                           Pendente iClass
                         </span>
                       )}
+                      {cliente.vendedor_id !== null ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-700 border-amber-100">
+                          <Briefcase className="w-3 h-3" />
+                          {vendedorNome(cliente.vendedor_id)}
+                        </span>
+                      ) : (
+                        activeRole === PerfilUsuario.ADMIN && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white text-slate-400 border-slate-200 border-dashed">
+                            Sem vendedor
+                          </span>
+                        )
+                      )}
                     </div>
                     <p className="text-[11px] text-slate-400 font-mono mt-1">CNPJ: {cliente.cnpj_raw || "—"}</p>
                     <p className="text-[11px] text-slate-500 font-semibold mt-1 flex items-center gap-1">
@@ -452,6 +539,36 @@ export default function Clientes({ activeRole }: ClientesProps) {
                             <span>Corrigir cadastro iClass</span>
                           </button>
                         </div>
+
+                        {activeRole === PerfilUsuario.ADMIN && (
+                          <div className="flex flex-wrap items-center gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                            <label
+                              htmlFor={`cliente-vendedor-${cliente.id}`}
+                              className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5"
+                            >
+                              <Briefcase className="w-3 h-3" />
+                              Vendedor
+                            </label>
+                            <select
+                              id={`cliente-vendedor-${cliente.id}`}
+                              value={cliente.vendedor_id ?? ""}
+                              disabled={atribuindoId === cliente.id}
+                              onChange={(e) =>
+                                handleAtribuirVendedor(cliente, e.target.value ? Number(e.target.value) : null)
+                              }
+                              className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer disabled:opacity-60 min-w-[200px]"
+                            >
+                              <option value="">— Sem vendedor —</option>
+                              {vendedoresDisponiveis(cliente.vendedor_id).map((v) => (
+                                <option key={v.id} value={v.id}>
+                                  {v.nome}
+                                  {!v.ativo ? " (desativado)" : ""}
+                                </option>
+                              ))}
+                            </select>
+                            {atribuindoId === cliente.id && <span className="text-[10px] text-slate-400">Salvando...</span>}
+                          </div>
+                        )}
 
                         <div className="flex flex-wrap items-center gap-2">
                           <button

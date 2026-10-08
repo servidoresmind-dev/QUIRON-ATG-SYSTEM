@@ -200,6 +200,8 @@ export interface ClienteCard {
   inativo: boolean;
   iclass_nome: string | null;
   iclass_pendente: boolean;
+  // Vendedor responsável (omie_clientes.vendedor_id) — também mesclado após o fetch.
+  vendedor_id: number | null;
 }
 
 export interface OmieClienteDetalhe {
