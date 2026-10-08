@@ -51,10 +51,13 @@ export interface SaudeGerador {
   pendencias: ItemSaude[];
 }
 
-type ItemEntrada = Pick<Preditiva, "item_nome" | "status" | "data_vencimento" | "dias_para_vencer" | "nao_aplica">;
+export type ItemEntrada = Pick<
+  Preditiva,
+  "item_nome" | "status" | "data_vencimento" | "dias_para_vencer" | "nao_aplica"
+>;
 
 // Status desconhecido ou ausente é tratado como "sem data": nunca como "em dia".
-function normalizarStatus(item: ItemEntrada): StatusItemSaude {
+export function normalizarStatus(item: Pick<ItemEntrada, "status" | "nao_aplica">): StatusItemSaude {
   if (item.nao_aplica) return "nao_aplica";
   switch ((item.status || "").toLowerCase()) {
     case "ok":

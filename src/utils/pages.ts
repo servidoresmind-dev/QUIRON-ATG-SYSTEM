@@ -52,5 +52,11 @@ export function canAccessPage(
   if (pageKey === "usuarios") {
     return perfil === PerfilUsuario.ADMIN;
   }
+  // O relatório de saúde não é uma página do menu: quem pode abrir Clientes pode
+  // abrir o relatório. A regra "vendedor só dos próprios clientes" é conferida
+  // na própria página (ela busca o dono do cliente antes de mostrar qualquer dado).
+  if (pageKey === "relatorio") {
+    return allowedPagesFor(perfil, paginasPermitidas).includes("clientes");
+  }
   return allowedPagesFor(perfil, paginasPermitidas).includes(pageKey);
 }

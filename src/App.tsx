@@ -26,6 +26,7 @@ import ProductList from "./components/Products/ProductList";
 import ServiceList from "./components/Services/ServiceList";
 import Geradores from "./pages/Geradores";
 import Historico from "./pages/Historico";
+import RelatorioGerador from "./pages/RelatorioGerador";
 
 interface CurrentUser {
   email: string;
@@ -146,6 +147,8 @@ export default function App() {
         return <Orcamentos />;
       case "clientes":
         return <Clientes activeRole={activeRole} />;
+      case "relatorio-detail":
+        return <RelatorioGerador geradorId={route.id} activeRole={activeRole} />;
       case "usuarios":
         return <Usuarios activeRole={activeRole} />;
       case "configuracoes":

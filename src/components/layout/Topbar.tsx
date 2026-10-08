@@ -52,6 +52,9 @@ export default function Topbar({
       parts.push({ label: "Detalhe do Orçamento", href: "" });
     } else if (currentPath === "clientes") {
       parts.push({ label: "Clientes", href: "#/clientes" });
+    } else if (currentPath === "relatorio-detail") {
+      parts.push({ label: "Clientes", href: "#/clientes" });
+      parts.push({ label: "Relatório de Saúde", href: "" });
     } else if (currentPath === "usuarios") {
       parts.push({ label: "Usuários", href: "#/usuarios" });
     } else if (currentPath === "configuracoes") {

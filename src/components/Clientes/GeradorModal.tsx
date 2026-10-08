@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { CheckCircle2, Circle, Trash2 } from "lucide-react";
+import { CheckCircle2, Circle, Trash2, FileText } from "lucide-react";
+import { navigateTo } from "../../utils/navigation";
 import { GeradorAtg } from "../../types";
 import Modal from "../ui/Modal";
 import { validarCadastro } from "../../utils/atgBackend";
@@ -162,7 +163,8 @@ export default function GeradorModal({
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Tabs + relatório de saúde */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex bg-slate-100 p-1 rounded-xl w-fit border border-slate-200">
           <button
             onClick={() => setTab("preditiva")}
@@ -179,6 +181,18 @@ export default function GeradorModal({
             }`}
           >
             Ficha de Levantamento
+          </button>
+        </div>
+          <button
+            id="gerador-gerar-relatorio"
+            onClick={() => {
+              onClose();
+              navigateTo(`relatorio/${gerador.id}`);
+            }}
+            className="px-3.5 py-2 bg-brand-500 text-white rounded-xl font-bold text-xs hover:bg-brand-600 transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Gerar Relatório</span>
           </button>
         </div>
 

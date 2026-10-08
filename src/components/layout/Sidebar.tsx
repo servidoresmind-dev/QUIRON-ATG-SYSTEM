@@ -95,7 +95,7 @@ export default function Sidebar({ currentPath, allowedPages }: SidebarProps) {
     if (itemPath === "dashboard" && currentPath === "dashboard") return true;
     if (itemPath === "ordens-servico" && (currentPath === "ordens-servico" || currentPath === "ordens-servico-detail")) return true;
     if (itemPath === "orcamentos" && (currentPath === "orcamentos" || currentPath === "orcamentos-detail")) return true;
-    if (itemPath === "clientes" && currentPath === "clientes") return true;
+    if (itemPath === "clientes" && (currentPath === "clientes" || currentPath === "relatorio-detail")) return true;
     if (itemPath === "produtos" && currentPath === "produtos") return true;
     if (itemPath === "servicos" && currentPath === "servicos") return true;
     if (itemPath === "geradores" && currentPath === "geradores") return true;

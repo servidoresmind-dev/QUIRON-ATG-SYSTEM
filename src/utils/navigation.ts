@@ -40,6 +40,14 @@ export function parseHash(hash: string): ParsedRoute {
     return { path: "clientes" };
   }
 
+  if (base === "relatorio") {
+    // Relatório de saúde de um gerador: #/relatorio/<id do gerador>
+    if (parts[1]) {
+      return { path: "relatorio-detail", id: parts[1] };
+    }
+    return { path: "clientes" };
+  }
+
   if (base === "usuarios") {
     return { path: "usuarios" };
   }
