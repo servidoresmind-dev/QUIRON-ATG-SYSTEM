@@ -80,6 +80,60 @@ Deno.serve(async (req) => {
   // Admin client with the service_role key — full Auth Admin access.
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
+  // ── Vínculo login ↔ vendedor (tabela `vendedores`, coluna auth_user_id) ──
+  // Um vendedor tem no máximo um login e um login aponta para no máximo um
+  // vendedor (índice único parcial no banco). `userId` é null quando o login
+  // ainda não existe (convite).
+  const checarVendedor = async (
+    vendedorId: unknown,
+    userId: string | null
+  ): Promise<{ erro: string | null; linkAtual: string | null }> => {
+    if (typeof vendedorId !== "number" || !Number.isInteger(vendedorId)) {
+      return { erro: "Selecione o vendedor vinculado.", linkAtual: null };
+    }
+    const { data, error } = await adminClient
+      .from("vendedores")
+      .select("id, ativo, auth_user_id")
+      .eq("id", vendedorId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return { erro: "Vendedor não encontrado.", linkAtual: null };
+    const jaEhDeste = userId !== null && data.auth_user_id === userId;
+    if (data.auth_user_id && !jaEhDeste) {
+      return { erro: "Este vendedor já está vinculado a outro usuário.", linkAtual: data.auth_user_id };
+    }
+    if (!data.ativo && !jaEhDeste) {
+      return { erro: "Este vendedor está desativado.", linkAtual: data.auth_user_id };
+    }
+    return { erro: null, linkAtual: data.auth_user_id };
+  };
+
+  // Deixa o vínculo do usuário consistente com o perfil: quem não é vendedor
+  // fica sem vendedor; quem é vendedor aponta só para o escolhido. Devolve a
+  // mensagem de erro, ou null se deu certo.
+  const sincronizarVinculo = async (
+    userId: string,
+    perfil: string,
+    vendedorId: unknown,
+    linkAtual: string | null
+  ): Promise<string | null> => {
+    const desfazer = adminClient.from("vendedores").update({ auth_user_id: null }).eq("auth_user_id", userId);
+    const { error: unlinkErr } =
+      perfil === "vendedor" ? await desfazer.neq("id", vendedorId as number) : await desfazer;
+    if (unlinkErr) return unlinkErr.message;
+    if (perfil !== "vendedor" || linkAtual === userId) return null;
+
+    const { data, error } = await adminClient
+      .from("vendedores")
+      .update({ auth_user_id: userId })
+      .eq("id", vendedorId as number)
+      .is("auth_user_id", null)
+      .select("id");
+    if (error) return error.message;
+    if (!data || data.length !== 1) return "Não foi possível vincular o vendedor.";
+    return null;
+  };
+
   let payload: any;
   try {
     payload = await req.json();
@@ -94,10 +148,22 @@ Deno.serve(async (req) => {
       const { data, error } = await adminClient.auth.admin.listUsers({ perPage: 1000 });
       if (error) throw error;
 
+      // Qual vendedor está ligado a cada login (null para quem não é vendedor).
+      const { data: vinculos, error: vinculosError } = await adminClient
+        .from("vendedores")
+        .select("id, auth_user_id")
+        .not("auth_user_id", "is", null);
+      // Se esta consulta falhar, a listagem de usuários continua funcionando sem o vínculo.
+      if (vinculosError) console.error("Falha ao ler vínculos de vendedores", vinculosError.message);
+      const vendedorPorUsuario = new Map<string, number>(
+        (vinculos || []).map((v: { id: number; auth_user_id: string }) => [v.auth_user_id, v.id])
+      );
+
       // A migração preguiçosa da Fase 1 foi removida de propósito: copiar de
       // user_metadata para app_metadata reabriria a brecha (um usuário poderia
       // se declarar admin em user_metadata e ser "promovido" pela cópia).
       const usuarios = data.users.map((u) => ({
+        vendedor_id: vendedorPorUsuario.get(u.id) ?? null,
         id: u.id,
         nome: (u.user_metadata?.nome as string) || u.email || "Sem nome",
         email: u.email,
@@ -118,6 +184,14 @@ Deno.serve(async (req) => {
       }
       if (!PERFIS_VALIDOS.includes(perfil)) {
         return json({ error: "Perfil inválido." }, 400);
+      }
+
+      // Vendedor precisa estar ligado a um cadastro de vendedor (senão não teria
+      // nenhum cliente seu). Valida ANTES de convidar, para não criar login órfão.
+      const { vendedor_id } = payload;
+      if (perfil === "vendedor") {
+        const { erro } = await checarVendedor(vendedor_id, null);
+        if (erro) return json({ error: erro }, 400);
       }
 
       const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
@@ -147,6 +221,16 @@ Deno.serve(async (req) => {
         }, 500);
       }
 
+      if (perfil === "vendedor") {
+        const vinculoErro = await sincronizarVinculo(data.user.id, perfil, vendedor_id, null);
+        if (vinculoErro) {
+          console.error("Falha ao vincular vendedor no convite", data.user.id, vinculoErro);
+          return json({
+            error: "Convite enviado, mas o vínculo com o vendedor falhou. Edite o usuário e salve para concluir."
+          }, 500);
+        }
+      }
+
       return json({ user: data.user });
     }
 
@@ -159,6 +243,14 @@ Deno.serve(async (req) => {
 
       if (id === callerData.user.id && perfil !== "administrador") {
         return json({ error: "Você não pode remover o seu próprio nível de acesso de administrador." }, 400);
+      }
+
+      const { vendedor_id } = payload;
+      let linkAtual: string | null = null;
+      if (perfil === "vendedor") {
+        const chk = await checarVendedor(vendedor_id, id);
+        if (chk.erro) return json({ error: chk.erro }, 400);
+        linkAtual = chk.linkAtual;
       }
 
       const { data, error } = await adminClient.auth.admin.updateUserById(id, {
@@ -175,6 +267,16 @@ Deno.serve(async (req) => {
         }
       });
       if (error) throw error;
+
+      // Mantém o vínculo coerente com o perfil (quem deixou de ser vendedor
+      // perde o vínculo; quem trocou de vendedor aponta para o novo).
+      const vinculoErro = await sincronizarVinculo(id, perfil, vendedor_id, linkAtual);
+      if (vinculoErro) {
+        console.error("Falha ao sincronizar vínculo de vendedor", id, vinculoErro);
+        return json({
+          error: "Perfil salvo, mas o vínculo com o vendedor falhou. Abra o usuário e salve de novo."
+        }, 500);
+      }
 
       return json({ user: data.user });
     }

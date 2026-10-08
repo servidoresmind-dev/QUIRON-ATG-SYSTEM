@@ -16,7 +16,7 @@ import {
   AlertTriangle,
   RefreshCw
 } from "lucide-react";
-import { Usuario, PerfilUsuario } from "../types";
+import { Usuario, PerfilUsuario, Vendedor } from "../types";
 import { navigateTo } from "../utils/navigation";
 import { formatDate } from "../utils/date";
 import { toast } from "sonner";
@@ -24,6 +24,7 @@ import Modal from "../components/ui/Modal";
 import VendedoresSection from "../components/Usuarios/VendedoresSection";
 import { supabase, isSupabaseConfigured } from "../utils/supabase";
 import { APP_PAGES, VENDEDOR_DEFAULT_PAGES } from "../utils/pages";
+import { registrarLog } from "../utils/logEdicoes";
 
 interface UsuariosProps {
   activeRole: PerfilUsuario;
@@ -50,6 +51,7 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState("desconhecido");
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -69,6 +71,18 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
   const [editNome, setEditNome] = useState("");
   const [editPerfil, setEditPerfil] = useState<PerfilUsuario>(PerfilUsuario.COMUM);
   const [editPaginas, setEditPaginas] = useState<string[]>([]);
+
+  // Vínculo login ↔ vendedor (Etapa 3B). `vendedoresVersion` força a seção
+  // "Vendedores" a recarregar depois de qualquer mudança de vínculo.
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [vendedoresVersion, setVendedoresVersion] = useState(0);
+  const [formVendedorId, setFormVendedorId] = useState<number | null>(null);
+  const [editVendedorId, setEditVendedorId] = useState<number | null>(null);
+
+  // Vendedores que podem ser escolhidos: ativos e ainda sem login, mais o que já
+  // está ligado a este usuário (mesmo que tenha sido desativado depois).
+  const vendedoresDisponiveis = (vinculadoId: number | null) =>
+    vendedores.filter((v) => (v.ativo && !v.auth_user_id) || v.id === vinculadoId);
 
   const togglePagina = (
     paginas: string[],
@@ -99,9 +113,20 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
     try {
       const { data: sessionData } = await supabase.auth.getUser();
       setCurrentUserId(sessionData.user?.id || null);
+      if (sessionData.user?.email) setCurrentUserEmail(sessionData.user.email);
 
       const data = await invokeManageUsers({ action: "list" });
       setUsuarios(data.usuarios || []);
+
+      // Lista de vendedores para o campo "Vendedor vinculado". Se falhar, o resto
+      // da tela continua funcionando — só o campo fica sem opções.
+      const { data: vendData, error: vendError } = await supabase
+        .from("vendedores")
+        .select("*")
+        .order("nome", { ascending: true });
+      if (vendError) console.warn("Não foi possível carregar os vendedores.", vendError.message);
+      setVendedores(vendData || []);
+      setVendedoresVersion((v) => v + 1);
     } catch (err: any) {
       setError(err.message || "Erro ao carregar usuários.");
       toast.error("Erro ao carregar usuários.", { description: err.message });
@@ -156,6 +181,10 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
       newErrors.email = "Este e-mail já está em uso.";
     }
 
+    if (formPerfil === PerfilUsuario.VENDEDOR && formVendedorId === null) {
+      newErrors.vendedor = "Selecione o vendedor vinculado.";
+    }
+
     setErrors(newErrors);
 
     if (Object.keys(newErrors).length > 0) {
@@ -170,7 +199,8 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
         nome: formNome,
         email: formEmail,
         perfil: formPerfil,
-        paginas_permitidas: formPaginas
+        paginas_permitidas: formPaginas,
+        vendedor_id: formPerfil === PerfilUsuario.VENDEDOR ? formVendedorId : undefined
       });
       toast.success("Convite enviado com sucesso!", {
         description: `Um e-mail foi enviado para ${formEmail} com instruções para definir a senha.`
@@ -180,6 +210,14 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
       setFormEmail("");
       setFormPerfil(PerfilUsuario.COMUM);
       setFormPaginas(["dashboard"]);
+      if (formPerfil === PerfilUsuario.VENDEDOR && formVendedorId !== null) {
+        // Sem valor_antes de propósito: o Histórico não oferece "Reverter" para
+        // vínculo (reverter só a tabela deixaria o login e o vendedor dessincronizados).
+        await registrarLog("vendedor", formVendedorId, "vinculou_login", currentUserEmail, null, {
+          usuario: formEmail.trim()
+        });
+      }
+      setFormVendedorId(null);
       fetchUsuarios();
     } catch (err: any) {
       toast.error("Erro ao convidar usuário.", { description: err.message });
@@ -193,6 +231,7 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
     setShowEditModal(user);
     setEditNome(user.nome);
     setEditPerfil(user.perfil);
+    setEditVendedorId(user.vendedor_id ?? null);
     // null = legado/administrador → começa com tudo marcado; array explícito é respeitado como está.
     // Vendedor sem checklist parte do mínimo dele (não de "tudo").
     setEditPaginas(
@@ -208,6 +247,10 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
       toast.error("Nome é obrigatório.");
       return;
     }
+    if (editPerfil === PerfilUsuario.VENDEDOR && editVendedorId === null) {
+      toast.error("Selecione o vendedor vinculado.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -216,8 +259,23 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
         id: showEditModal.id,
         nome: editNome,
         perfil: editPerfil,
-        paginas_permitidas: editPaginas
+        paginas_permitidas: editPaginas,
+        vendedor_id: editPerfil === PerfilUsuario.VENDEDOR ? editVendedorId : undefined
       });
+      const vendedorAnterior = showEditModal.vendedor_id ?? null;
+      const vendedorNovo = editPerfil === PerfilUsuario.VENDEDOR ? editVendedorId : null;
+      if (vendedorAnterior !== vendedorNovo) {
+        if (vendedorAnterior !== null) {
+          await registrarLog("vendedor", vendedorAnterior, "desvinculou_login", currentUserEmail, null, {
+            usuario: showEditModal.email
+          });
+        }
+        if (vendedorNovo !== null) {
+          await registrarLog("vendedor", vendedorNovo, "vinculou_login", currentUserEmail, null, {
+            usuario: showEditModal.email
+          });
+        }
+      }
       toast.success(`Cadastro do usuário ${editNome} atualizado!`);
       setShowEditModal(null);
       fetchUsuarios();
@@ -359,6 +417,17 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                             : `${u.paginas_permitidas.length} página${u.paginas_permitidas.length === 1 ? "" : "s"} liberada${u.paginas_permitidas.length === 1 ? "" : "s"}`}
                         </span>
                       )}
+                      {u.perfil === PerfilUsuario.VENDEDOR && (
+                        <span className="block text-[10px] font-semibold mt-1">
+                          {u.vendedor_id ? (
+                            <span className="text-amber-700">
+                              Vendedor: {vendedores.find((v) => v.id === u.vendedor_id)?.nome ?? `#${u.vendedor_id}`}
+                            </span>
+                          ) : (
+                            <span className="text-rose-500">Sem vendedor vinculado</span>
+                          )}
+                        </span>
+                      )}
                     </td>
 
                     {/* Created Em */}
@@ -414,7 +483,7 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
       </div>
 
       {/* Cadastro de vendedores (lista de atribuição de clientes) */}
-      <VendedoresSection />
+      <VendedoresSection key={vendedoresVersion} />
 
       {/* MODAL: NOVO USUÁRIO */}
       {showCreateModal && (
@@ -507,6 +576,43 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                 <option value={PerfilUsuario.ADMIN}>Administrador (Acesso completo e controle de usuários)</option>
               </select>
             </div>
+
+            {formPerfil === PerfilUsuario.VENDEDOR && (
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-slate-500">Vendedor Vinculado *</label>
+                <select
+                  id="usr-create-vendedor"
+                  value={formVendedorId ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value ? Number(e.target.value) : null;
+                    setFormVendedorId(id);
+                    if (errors.vendedor) setErrors((prev) => ({ ...prev, vendedor: "" }));
+                    // Aproveita o cadastro do vendedor para preencher o que estiver vazio.
+                    const escolhido = vendedores.find((v) => v.id === id);
+                    if (escolhido) {
+                      if (!formNome.trim()) setFormNome(escolhido.nome);
+                      if (!formEmail.trim() && escolhido.email) setFormEmail(escolhido.email);
+                    }
+                  }}
+                  className={`w-full px-3 py-2 text-xs bg-white border ${
+                    errors.vendedor ? "border-rose-400" : "border-slate-200"
+                  } rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer`}
+                >
+                  <option value="">Selecione o vendedor...</option>
+                  {vendedoresDisponiveis(null).map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.nome}
+                      {v.email ? ` — ${v.email}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {errors.vendedor && <p className="text-[10px] text-rose-500 font-semibold">{errors.vendedor}</p>}
+                <p className="text-[10px] text-slate-400">
+                  É por este vínculo que o sistema sabe quais clientes pertencem a este login. Só aparecem vendedores
+                  ativos que ainda não têm login.
+                </p>
+              </div>
+            )}
 
             {formPerfil !== PerfilUsuario.ADMIN && (
               <div className="space-y-1.5">
@@ -601,6 +707,32 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                 </p>
               )}
             </div>
+
+            {editPerfil === PerfilUsuario.VENDEDOR && (
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-slate-500">Vendedor Vinculado *</label>
+                <select
+                  id="usr-edit-vendedor"
+                  value={editVendedorId ?? ""}
+                  onChange={(e) => setEditVendedorId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                >
+                  <option value="">Selecione o vendedor...</option>
+                  {vendedoresDisponiveis(showEditModal.vendedor_id ?? null).map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.nome}
+                      {v.email ? ` — ${v.email}` : ""}
+                      {!v.ativo ? " (desativado)" : ""}
+                    </option>
+                  ))}
+                </select>
+                {editVendedorId === null && (
+                  <p className="text-[10px] text-amber-600 font-semibold">
+                    Sem vendedor vinculado, este login não terá nenhum cliente seu.
+                  </p>
+                )}
+              </div>
+            )}
 
             {editPerfil !== PerfilUsuario.ADMIN && (
               <div className="space-y-1.5">

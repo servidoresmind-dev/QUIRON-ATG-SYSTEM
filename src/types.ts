@@ -60,6 +60,8 @@ export interface Usuario {
   // null = Administrador, ou Usuário Comum criado antes desta funcionalidade
   // existir (mantém acesso total antigo, "tudo exceto Usuários").
   paginas_permitidas: string[] | null;
+  // Vendedor ligado a este login (tabela `vendedores`); null para quem não é vendedor.
+  vendedor_id?: number | null;
   ativo: boolean;
   criado_em: string;
 }
