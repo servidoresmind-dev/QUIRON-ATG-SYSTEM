@@ -10,6 +10,8 @@ interface FichaTabProps {
   gerador: GeradorAtg;
   usuario: string;
   onUpdated: (updated: GeradorAtg) => void;
+  // Perfil Vendedor: só consulta — sem editar a ficha nem vincular O.S.
+  somenteLeitura?: boolean;
 }
 
 // Um campo de seção pode ser um valor simples ("motor.modelo") ou, em seções
@@ -19,7 +21,7 @@ function isSubObjeto(valor: unknown): valor is Record<string, string> {
   return valor != null && typeof valor === "object" && !Array.isArray(valor);
 }
 
-export default function FichaTab({ gerador, usuario, onUpdated }: FichaTabProps) {
+export default function FichaTab({ gerador, usuario, onUpdated, somenteLeitura = false }: FichaTabProps) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [form, setForm] = useState<FichaLevantamento>(gerador.ficha_levantamento || {});
   const [saving, setSaving] = useState(false);
@@ -33,9 +35,13 @@ export default function FichaTab({ gerador, usuario, onUpdated }: FichaTabProps)
             <FileText className="w-6 h-6" />
           </div>
           <h3 className="text-sm font-bold text-slate-800">Este gerador ainda não tem ficha de levantamento</h3>
-          <p className="text-xs text-slate-500 mt-1">Vincule a O.S. que originou o levantamento técnico para preencher esta aba.</p>
+          <p className="text-xs text-slate-500 mt-1">
+            {somenteLeitura
+              ? "A ficha ainda não foi preenchida. Peça a um administrador para vincular a O.S. do levantamento."
+              : "Vincule a O.S. que originou o levantamento técnico para preencher esta aba."}
+          </p>
         </div>
-        <VincularOsWizard gerador={gerador} usuario={usuario} onLinked={onUpdated} />
+        {!somenteLeitura && <VincularOsWizard gerador={gerador} usuario={usuario} onLinked={onUpdated} />}
       </div>
     );
   }
@@ -59,7 +65,7 @@ export default function FichaTab({ gerador, usuario, onUpdated }: FichaTabProps)
   };
 
   const handleSave = async () => {
-    if (!supabase) return;
+    if (!supabase || somenteLeitura) return;
     setSaving(true);
 
     const valorAntes = gerador.ficha_levantamento;
@@ -98,7 +104,7 @@ export default function FichaTab({ gerador, usuario, onUpdated }: FichaTabProps)
             <>Vinculada via O.S. <span className="font-mono font-semibold text-slate-600">{gerador.codigo_os_ficha_levantamento}</span></>
           )}
         </p>
-        {mostrandoVincularNova ? null : !isEditMode ? (
+        {somenteLeitura || mostrandoVincularNova ? null : !isEditMode ? (
           <div className="flex items-center gap-2">
             <button
               onClick={() => setMostrandoVincularNova(true)}

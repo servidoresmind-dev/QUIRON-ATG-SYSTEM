@@ -15,15 +15,25 @@ interface GeradorModalProps {
   onClose: () => void;
   onUpdated: (updated: GeradorAtg) => void;
   onDeleted: (geradorId: number) => void;
+  // Perfil Vendedor: só consulta — sem validar, excluir nem editar ficha/preditiva.
+  somenteLeitura?: boolean;
 }
 
-export default function GeradorModal({ gerador, usuario, onClose, onUpdated, onDeleted }: GeradorModalProps) {
+export default function GeradorModal({
+  gerador,
+  usuario,
+  onClose,
+  onUpdated,
+  onDeleted,
+  somenteLeitura = false
+}: GeradorModalProps) {
   const [tab, setTab] = useState<"preditiva" | "ficha">("preditiva");
   const [validating, setValidating] = useState(false);
   const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
 
   const handleValidar = async () => {
+    if (somenteLeitura) return;
     setValidating(true);
     try {
       const result = await validarCadastro("gerador", gerador.id, usuario, !gerador.validado);
@@ -39,7 +49,7 @@ export default function GeradorModal({ gerador, usuario, onClose, onUpdated, onD
   };
 
   const handleExcluir = async () => {
-    if (!supabase) return;
+    if (!supabase || somenteLeitura) return;
     setExcluindo(true);
 
     // Exclusão real e definitiva — sem possibilidade de recuperação pela UI.
@@ -103,6 +113,7 @@ export default function GeradorModal({ gerador, usuario, onClose, onUpdated, onD
           </div>
         </div>
 
+        {!somenteLeitura && (
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleValidar}
@@ -125,8 +136,9 @@ export default function GeradorModal({ gerador, usuario, onClose, onUpdated, onD
             <span>Excluir Gerador</span>
           </button>
         </div>
+        )}
 
-        {confirmandoRemocao && (
+        {!somenteLeitura && confirmandoRemocao && (
           <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 space-y-3">
             <p className="text-xs font-semibold text-rose-800">
               Tem certeza? O gerador será apagado definitivamente do banco de dados, sem possibilidade de recuperação.
@@ -171,9 +183,9 @@ export default function GeradorModal({ gerador, usuario, onClose, onUpdated, onD
         </div>
 
         {tab === "preditiva" ? (
-          <PreditivaTab gerador={gerador} usuario={usuario} />
+          <PreditivaTab gerador={gerador} usuario={usuario} somenteLeitura={somenteLeitura} />
         ) : (
-          <FichaTab gerador={gerador} usuario={usuario} onUpdated={onUpdated} />
+          <FichaTab gerador={gerador} usuario={usuario} onUpdated={onUpdated} somenteLeitura={somenteLeitura} />
         )}
       </div>
     </Modal>

@@ -83,6 +83,10 @@ export default function Clientes({ activeRole }: ClientesProps) {
 
   const [creatingCliente, setCreatingCliente] = useState(false);
 
+  // Vendedor só consulta: vê os clientes dele e gera relatório, mas não cria,
+  // corrige, valida nem edita nada. Liberar uma ação é só tirar o bloqueio abaixo.
+  const somenteLeitura = activeRole === PerfilUsuario.VENDEDOR;
+
   const fetchClientes = async () => {
     setLoading(true);
     setError(null);
@@ -190,7 +194,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
     vendedores.filter((v) => v.ativo || v.id === atualId);
 
   const handleAtribuirVendedor = async (cliente: ClienteCard, novoId: number | null) => {
-    if (!supabase || novoId === cliente.vendedor_id) return;
+    if (!supabase || somenteLeitura || novoId === cliente.vendedor_id) return;
     setAtribuindoId(cliente.id);
 
     const { error: updateError } = await supabase
@@ -340,6 +344,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
   };
 
   const handleValidarCliente = async (cliente: ClienteCard) => {
+    if (somenteLeitura) return;
     setValidating(true);
     try {
       const result = await validarCadastro("cliente", cliente.id, currentUserEmail, !cliente.cliente_validado);
@@ -412,13 +417,15 @@ export default function Clientes({ activeRole }: ClientesProps) {
             Revise, corrija e valide os cadastros de clientes, geradores e fichas de levantamento.
           </p>
         </div>
-        <button
-          onClick={() => setCreatingCliente(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-brand-500 text-white rounded-xl font-bold text-xs hover:bg-brand-600 transition-colors shadow-soft cursor-pointer shrink-0"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Novo Cliente</span>
-        </button>
+        {!somenteLeitura && (
+          <button
+            onClick={() => setCreatingCliente(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-brand-500 text-white rounded-xl font-bold text-xs hover:bg-brand-600 transition-colors shadow-soft cursor-pointer shrink-0"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Novo Cliente</span>
+          </button>
+        )}
       </div>
 
       <FilterBar
@@ -575,13 +582,15 @@ export default function Clientes({ activeRole }: ClientesProps) {
                               </div>
                             </div>
                           </div>
-                          <button
-                            onClick={() => setCorrectingIclassFor(cliente)}
-                            className="text-[11px] font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1 cursor-pointer"
-                          >
-                            <Edit3 className="w-3 h-3" />
-                            <span>Corrigir cadastro iClass</span>
-                          </button>
+                          {!somenteLeitura && (
+                            <button
+                              onClick={() => setCorrectingIclassFor(cliente)}
+                              className="text-[11px] font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                              <span>Corrigir cadastro iClass</span>
+                            </button>
+                          )}
                         </div>
 
                         {activeRole === PerfilUsuario.ADMIN && (
@@ -615,18 +624,20 @@ export default function Clientes({ activeRole }: ClientesProps) {
                         )}
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            onClick={() => handleValidarCliente(cliente)}
-                            disabled={validating}
-                            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer disabled:opacity-60 ${
-                              cliente.cliente_validado
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
-                                : "bg-brand-500 text-white hover:bg-brand-600"
-                            }`}
-                          >
-                            {cliente.cliente_validado ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" />}
-                            <span>{cliente.cliente_validado ? "Validado (clique para reabrir)" : "Conferido"}</span>
-                          </button>
+                          {!somenteLeitura && (
+                            <button
+                              onClick={() => handleValidarCliente(cliente)}
+                              disabled={validating}
+                              className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer disabled:opacity-60 ${
+                                cliente.cliente_validado
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                                  : "bg-brand-500 text-white hover:bg-brand-600"
+                              }`}
+                            >
+                              {cliente.cliente_validado ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" />}
+                              <span>{cliente.cliente_validado ? "Validado (clique para reabrir)" : "Conferido"}</span>
+                            </button>
+                          )}
 
                           <button
                             onClick={() => handleToggleGeradores(cliente.id)}
@@ -636,7 +647,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
                             <span>{showGeradoresFor === cliente.id ? "Ocultar Geradores" : "Ver Geradores"}</span>
                           </button>
 
-                          {cliente.estado !== "SEM_ICLASS" && (
+                          {!somenteLeitura && cliente.estado !== "SEM_ICLASS" && (
                             <button
                               onClick={() => setAddGeradorForCliente(cliente)}
                               className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer"
@@ -646,7 +657,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
                             </button>
                           )}
 
-                          {cliente.estado !== "SEM_ICLASS" && (
+                          {!somenteLeitura && cliente.estado !== "SEM_ICLASS" && (
                             <button
                               onClick={() => setAddGeradorPorOsForCliente(cliente)}
                               className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer"
@@ -767,6 +778,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
             setSelectedGerador(updated);
           }}
           onDeleted={handleGeradorDeleted}
+          somenteLeitura={somenteLeitura}
         />
       )}
 

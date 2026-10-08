@@ -10,6 +10,8 @@ import { toast } from "sonner";
 interface PreditivaTabProps {
   gerador: GeradorAtg;
   usuario: string;
+  // Perfil Vendedor: só consulta — sem editar datas, oxicatalisador nem cadastrar itens.
+  somenteLeitura?: boolean;
 }
 
 function statusBadge(status: string | null) {
@@ -20,7 +22,7 @@ function statusBadge(status: string | null) {
   return "bg-slate-100 text-slate-500 border-slate-200";
 }
 
-export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
+export default function PreditivaTab({ gerador, usuario, somenteLeitura = false }: PreditivaTabProps) {
   const [items, setItems] = useState<Preditiva[]>([]);
   const [oxi, setOxi] = useState<OxicatalisadorAtg | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,6 +77,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
   };
 
   const handleSave = async (item: Preditiva) => {
+    if (somenteLeitura) return;
     setSaving(true);
     try {
       const result = await salvarPreditiva(
@@ -104,7 +107,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
   };
 
   const handleCadastrarPreditivaPadrao = async () => {
-    if (!supabase) return;
+    if (!supabase || somenteLeitura) return;
     setCadastrandoPadrao(true);
 
     const { data: catalogo, error: catalogoError } = await supabase
@@ -164,7 +167,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
   };
 
   const handleSaveOxi = async () => {
-    if (!supabase) return;
+    if (!supabase || somenteLeitura) return;
     setSavingOxi(true);
 
     const camposEditaveis = {
@@ -258,14 +261,16 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
               sistema. O item de Oxicatalisador abaixo é cadastrado separadamente e sempre aparece.
             </span>
           </div>
-          <button
-            onClick={handleCadastrarPreditivaPadrao}
-            disabled={cadastrandoPadrao}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-500 text-white rounded-lg text-[10px] font-bold hover:bg-brand-600 transition-colors cursor-pointer disabled:opacity-60"
-          >
-            <Save className="w-3.5 h-3.5" />
-            {cadastrandoPadrao ? "Cadastrando..." : "Cadastrar itens padrão de preditiva"}
-          </button>
+          {!somenteLeitura && (
+            <button
+              onClick={handleCadastrarPreditivaPadrao}
+              disabled={cadastrandoPadrao}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-500 text-white rounded-lg text-[10px] font-bold hover:bg-brand-600 transition-colors cursor-pointer disabled:opacity-60"
+            >
+              <Save className="w-3.5 h-3.5" />
+              {cadastrandoPadrao ? "Cadastrando..." : "Cadastrar itens padrão de preditiva"}
+            </button>
+          )}
         </div>
       )}
       <div className="overflow-x-auto border border-slate-100 rounded-xl">
@@ -276,7 +281,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
             <th className="py-2 px-3">Data Realizada</th>
             <th className="py-2 px-3">Data Vencimento</th>
             <th className="py-2 px-3">Status</th>
-            <th className="py-2 px-3 text-right">Ações</th>
+            {!somenteLeitura && <th className="py-2 px-3 text-right">Ações</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50 text-xs">
@@ -328,6 +333,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
                     </span>
                   )}
                 </td>
+                {!somenteLeitura && (
                 <td className="py-2 px-3 text-right">
                   {isEditing ? (
                     <button
@@ -348,6 +354,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
                     </button>
                   )}
                 </td>
+                )}
               </tr>
             );
           })}
@@ -383,6 +390,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
               )}
             </td>
             <td className="py-2 px-3">—</td>
+            {!somenteLeitura && (
             <td className="py-2 px-3 text-right">
               {editingOxi ? (
                 <button
@@ -403,6 +411,7 @@ export default function PreditivaTab({ gerador, usuario }: PreditivaTabProps) {
                 </button>
               )}
             </td>
+            )}
           </tr>
         </tbody>
       </table>
