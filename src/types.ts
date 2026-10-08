@@ -64,6 +64,18 @@ export interface Usuario {
   criado_em: string;
 }
 
+// Cadastro de vendedores (tabela `vendedores`). Independente do login: o vínculo
+// com um usuário do Auth é `auth_user_id` (preenchido na Etapa 3B).
+export interface Vendedor {
+  id: number;
+  nome: string;
+  email: string | null;
+  omie_vendedor_id: number | null; // origem: cópia de "vendedores omie"; null = cadastro manual
+  auth_user_id: string | null;
+  ativo: boolean;
+  criado_em: string;
+}
+
 export interface Produto {
   id: number;
   created_at: string;

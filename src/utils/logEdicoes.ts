@@ -20,6 +20,7 @@ export const TABELA_POR_ENTIDADE: Record<string, string> = {
   gerador: "geradores_atg",
   ficha: "geradores_atg",
   oxicatalisador: "oxicatalisador_atg",
+  vendedor: "vendedores",
   // Tabela legada da página antiga "Geradores" — separada de geradores_atg.
   gerador_legado: "geradores"
 };

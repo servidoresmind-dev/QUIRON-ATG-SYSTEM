@@ -21,6 +21,7 @@ import { navigateTo } from "../utils/navigation";
 import { formatDate } from "../utils/date";
 import { toast } from "sonner";
 import Modal from "../components/ui/Modal";
+import VendedoresSection from "../components/Usuarios/VendedoresSection";
 import { supabase, isSupabaseConfigured } from "../utils/supabase";
 import { APP_PAGES, VENDEDOR_DEFAULT_PAGES } from "../utils/pages";
 
@@ -411,6 +412,9 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
         </div>
         )}
       </div>
+
+      {/* Cadastro de vendedores (lista de atribuição de clientes) */}
+      <VendedoresSection />
 
       {/* MODAL: NOVO USUÁRIO */}
       {showCreateModal && (
