@@ -22,7 +22,7 @@ import { formatDate } from "../utils/date";
 import { toast } from "sonner";
 import Modal from "../components/ui/Modal";
 import { supabase, isSupabaseConfigured } from "../utils/supabase";
-import { APP_PAGES } from "../utils/pages";
+import { APP_PAGES, VENDEDOR_DEFAULT_PAGES } from "../utils/pages";
 
 interface UsuariosProps {
   activeRole: PerfilUsuario;
@@ -30,8 +30,19 @@ interface UsuariosProps {
 
 const ROLE_LABELS: Record<PerfilUsuario, string> = {
   [PerfilUsuario.ADMIN]: "Administrador",
-  [PerfilUsuario.COMUM]: "Usuário Comum"
+  [PerfilUsuario.COMUM]: "Usuário Comum",
+  [PerfilUsuario.VENDEDOR]: "Vendedor"
 };
+
+const ROLE_BADGE: Record<PerfilUsuario, string> = {
+  [PerfilUsuario.ADMIN]: "bg-purple-50 text-purple-700 border border-purple-100",
+  [PerfilUsuario.COMUM]: "bg-brand-50 text-brand-700 border border-brand-100",
+  [PerfilUsuario.VENDEDOR]: "bg-amber-50 text-amber-700 border border-amber-100"
+};
+
+// Páginas que um perfil começa marcado ao ser criado/editado sem checklist prévia.
+const defaultPaginasFor = (perfil: PerfilUsuario): string[] =>
+  perfil === PerfilUsuario.VENDEDOR ? VENDEDOR_DEFAULT_PAGES : ["dashboard"];
 
 export default function Usuarios({ activeRole }: UsuariosProps) {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
@@ -182,7 +193,11 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
     setEditNome(user.nome);
     setEditPerfil(user.perfil);
     // null = legado/administrador → começa com tudo marcado; array explícito é respeitado como está.
-    setEditPaginas(user.paginas_permitidas ?? APP_PAGES.map((p) => p.key));
+    // Vendedor sem checklist parte do mínimo dele (não de "tudo").
+    setEditPaginas(
+      user.paginas_permitidas ??
+        (user.perfil === PerfilUsuario.VENDEDOR ? VENDEDOR_DEFAULT_PAGES : APP_PAGES.map((p) => p.key))
+    );
   };
 
   // Handle Save Edited User
@@ -330,18 +345,16 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                     {/* Role */}
                     <td className="py-4 px-6">
                       <span
-                        className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
-                          u.perfil === PerfilUsuario.ADMIN
-                            ? "bg-purple-50 text-purple-700 border border-purple-100"
-                            : "bg-brand-50 text-brand-700 border border-brand-100"
-                        }`}
+                        className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${ROLE_BADGE[u.perfil]}`}
                       >
                         {ROLE_LABELS[u.perfil]}
                       </span>
-                      {u.perfil === PerfilUsuario.COMUM && (
+                      {u.perfil !== PerfilUsuario.ADMIN && (
                         <span className="block text-[10px] text-slate-400 font-medium mt-1">
                           {u.paginas_permitidas === null
-                            ? "todas as páginas (legado)"
+                            ? u.perfil === PerfilUsuario.VENDEDOR
+                              ? "somente Clientes & Geradores (padrão)"
+                              : "todas as páginas (legado)"
                             : `${u.paginas_permitidas.length} página${u.paginas_permitidas.length === 1 ? "" : "s"} liberada${u.paginas_permitidas.length === 1 ? "" : "s"}`}
                         </span>
                       )}
@@ -478,15 +491,20 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
               <select
                 id="usr-create-perfil"
                 value={formPerfil}
-                onChange={(e) => setFormPerfil(e.target.value as PerfilUsuario)}
+                onChange={(e) => {
+                  const novoPerfil = e.target.value as PerfilUsuario;
+                  setFormPerfil(novoPerfil);
+                  setFormPaginas(defaultPaginasFor(novoPerfil));
+                }}
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
               >
                 <option value={PerfilUsuario.COMUM}>Usuário Comum (escolha as páginas abaixo)</option>
+                <option value={PerfilUsuario.VENDEDOR}>Vendedor (acessa só os próprios clientes)</option>
                 <option value={PerfilUsuario.ADMIN}>Administrador (Acesso completo e controle de usuários)</option>
               </select>
             </div>
 
-            {formPerfil === PerfilUsuario.COMUM && (
+            {formPerfil !== PerfilUsuario.ADMIN && (
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-slate-500">Páginas Liberadas *</label>
                 <div className="grid grid-cols-2 gap-2 bg-slate-50 border border-slate-100 rounded-xl p-3">
@@ -558,10 +576,19 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
                 id="usr-edit-perfil"
                 value={editPerfil}
                 disabled={showEditModal.id === currentUserId}
-                onChange={(e) => setEditPerfil(e.target.value as PerfilUsuario)}
+                onChange={(e) => {
+                  const novoPerfil = e.target.value as PerfilUsuario;
+                  setEditPerfil(novoPerfil);
+                  // Ao virar Vendedor, parte do mínimo dele em vez de herdar a
+                  // marcação anterior (que pode ser "todas", se veio de Admin/legado).
+                  if (novoPerfil === PerfilUsuario.VENDEDOR && editPerfil !== PerfilUsuario.VENDEDOR) {
+                    setEditPaginas(VENDEDOR_DEFAULT_PAGES);
+                  }
+                }}
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer"
               >
                 <option value={PerfilUsuario.COMUM}>Usuário Comum (escolha as páginas abaixo)</option>
+                <option value={PerfilUsuario.VENDEDOR}>Vendedor (acessa só os próprios clientes)</option>
                 <option value={PerfilUsuario.ADMIN}>Administrador (Acesso completo e controle de usuários)</option>
               </select>
               {showEditModal.id === currentUserId && (
@@ -571,7 +598,7 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
               )}
             </div>
 
-            {editPerfil === PerfilUsuario.COMUM && (
+            {editPerfil !== PerfilUsuario.ADMIN && (
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-slate-500">Páginas Liberadas *</label>
                 <div className="grid grid-cols-2 gap-2 bg-slate-50 border border-slate-100 rounded-xl p-3">

@@ -5,7 +5,8 @@
 
 export enum PerfilUsuario {
   ADMIN = "administrador",
-  COMUM = "usuario_comum"
+  COMUM = "usuario_comum",
+  VENDEDOR = "vendedor"
 }
 
 export interface Gerador {

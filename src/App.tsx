@@ -36,7 +36,12 @@ interface CurrentUser {
 
 function mapSupabaseUser(user: User): CurrentUser {
   const metaPerfil = user.user_metadata?.perfil;
-  const perfil = metaPerfil === PerfilUsuario.ADMIN ? PerfilUsuario.ADMIN : PerfilUsuario.COMUM;
+  const perfil =
+    metaPerfil === PerfilUsuario.ADMIN
+      ? PerfilUsuario.ADMIN
+      : metaPerfil === PerfilUsuario.VENDEDOR
+        ? PerfilUsuario.VENDEDOR
+        : PerfilUsuario.COMUM;
   const paginasPermitidas = Array.isArray(user.user_metadata?.paginas_permitidas)
     ? (user.user_metadata.paginas_permitidas as string[])
     : null;

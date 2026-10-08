@@ -13,6 +13,15 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 
+const PERFIS_VALIDOS = ["administrador", "usuario_comum", "vendedor"];
+
+// Vendedor sem checklist enviada começa só com Clientes & Geradores (nunca "tudo").
+function paginasFor(perfil: string, paginas: unknown) {
+  if (perfil === "administrador") return null;
+  if (Array.isArray(paginas)) return paginas;
+  return perfil === "vendedor" ? ["clientes"] : [];
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -68,7 +77,12 @@ Deno.serve(async (req) => {
         id: u.id,
         nome: (u.user_metadata?.nome as string) || u.email || "Sem nome",
         email: u.email,
-        perfil: u.user_metadata?.perfil === "administrador" ? "administrador" : "usuario_comum",
+        perfil:
+          u.user_metadata?.perfil === "administrador"
+            ? "administrador"
+            : u.user_metadata?.perfil === "vendedor"
+              ? "vendedor"
+              : "usuario_comum",
         // null = usuário criado antes da checklist por página existir (mantém acesso total antigo).
         paginas_permitidas: Array.isArray(u.user_metadata?.paginas_permitidas)
           ? u.user_metadata.paginas_permitidas
@@ -85,6 +99,9 @@ Deno.serve(async (req) => {
       if (!nome || !email || !perfil) {
         return json({ error: "Nome, e-mail e perfil são obrigatórios." }, 400);
       }
+      if (!PERFIS_VALIDOS.includes(perfil)) {
+        return json({ error: "Perfil inválido." }, 400);
+      }
 
       const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
         data: {
@@ -93,8 +110,8 @@ Deno.serve(async (req) => {
           // Administrador nunca usa checklist (acesso total). Usuário Comum
           // recebe a lista marcada — array vazio é uma escolha válida (sem
           // nenhuma página liberada), então só cai no "null legado" se nem
-          // foi enviada.
-          paginas_permitidas: perfil === "administrador" ? null : (paginas_permitidas ?? [])
+          // foi enviada. Vendedor sem lista enviada começa só com "clientes".
+          paginas_permitidas: paginasFor(perfil, paginas_permitidas)
         }
       });
       if (error) throw error;
@@ -105,6 +122,9 @@ Deno.serve(async (req) => {
     if (action === "updateProfile") {
       const { id, nome, perfil, paginas_permitidas } = payload;
       if (!id) return json({ error: "ID do usuário é obrigatório." }, 400);
+      if (!PERFIS_VALIDOS.includes(perfil)) {
+        return json({ error: "Perfil inválido." }, 400);
+      }
 
       if (id === callerData.user.id && perfil !== "administrador") {
         return json({ error: "Você não pode remover o seu próprio nível de acesso de administrador." }, 400);
@@ -114,7 +134,7 @@ Deno.serve(async (req) => {
         user_metadata: {
           nome,
           perfil,
-          paginas_permitidas: perfil === "administrador" ? null : (paginas_permitidas ?? [])
+          paginas_permitidas: paginasFor(perfil, paginas_permitidas)
         }
       });
       if (error) throw error;

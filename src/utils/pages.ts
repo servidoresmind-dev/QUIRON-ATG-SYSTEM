@@ -17,6 +17,10 @@ export const APP_PAGES: { key: string; label: string }[] = [
 
 const ALL_PAGE_KEYS = APP_PAGES.map((p) => p.key);
 
+// Vendedor sem checklist explícita NÃO herda o "acesso total legado" do
+// Usuário Comum — cai neste mínimo seguro.
+export const VENDEDOR_DEFAULT_PAGES = ["clientes"];
+
 // Rotas como "ordens-servico-detail" pertencem à mesma página-base
 // "ordens-servico" para fins de permissão.
 export function basePageKey(routePath: string): string {
@@ -34,7 +38,7 @@ export function allowedPagesFor(
     return [...ALL_PAGE_KEYS, "usuarios"];
   }
   if (paginasPermitidas == null) {
-    return ALL_PAGE_KEYS;
+    return perfil === PerfilUsuario.VENDEDOR ? VENDEDOR_DEFAULT_PAGES : ALL_PAGE_KEYS;
   }
   return paginasPermitidas.filter((p) => ALL_PAGE_KEYS.includes(p));
 }

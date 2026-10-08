@@ -18,7 +18,8 @@ interface TopbarProps {
 
 const ROLE_LABELS: Record<PerfilUsuario, string> = {
   [PerfilUsuario.ADMIN]: "Administrador",
-  [PerfilUsuario.COMUM]: "Usuário Comum"
+  [PerfilUsuario.COMUM]: "Usuário Comum",
+  [PerfilUsuario.VENDEDOR]: "Vendedor"
 };
 
 export default function Topbar({
