@@ -254,7 +254,19 @@ export default function Historico({ activeRole, currentUserEmail }: HistoricoPro
                       <ValorResumo valor={log.valor_antes} />
                     </td>
                     <td className="py-2.5 px-3">
-                      <ValorResumo valor={log.valor_depois} />
+                      {log.valor_depois && Object.keys(log.valor_depois).length > 0 ? (
+                        <ValorResumo valor={log.valor_depois} />
+                      ) : log.detalhe && Object.keys(log.detalhe).length > 0 ? (
+                        // Ações feitas por RPC (salvar_preditiva, criar_gerador) gravam em
+                        // `detalhe`, não em valor_depois — mostra como reserva, com o aviso
+                        // de que é o que foi enviado, não um diff antes/depois calculado.
+                        <div>
+                          <ValorResumo valor={log.detalhe} />
+                          <span className="block text-[9px] text-slate-400 italic mt-0.5">(dados enviados)</span>
+                        </div>
+                      ) : (
+                        <ValorResumo valor={log.valor_depois} />
+                      )}
                     </td>
                     {activeRole === PerfilUsuario.ADMIN && (
                       <td className="py-2.5 px-3 text-right">

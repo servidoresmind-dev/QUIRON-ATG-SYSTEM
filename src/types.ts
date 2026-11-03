@@ -338,5 +338,9 @@ export interface LogEdicao {
   usuario: string;
   valor_antes: Record<string, unknown> | null;
   valor_depois: Record<string, unknown> | null;
+  // Preenchido pelas RPCs (salvar_preditiva, criar_gerador) em vez de
+  // valor_antes/valor_depois — é o payload bruto que foi enviado, não um
+  // diff antes/depois. O Histórico usa como reserva quando valor_depois vem vazio.
+  detalhe: Record<string, unknown> | null;
   criado_em: string;
 }
