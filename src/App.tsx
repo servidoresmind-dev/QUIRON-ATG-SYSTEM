@@ -27,6 +27,7 @@ import ServiceList from "./components/Services/ServiceList";
 import Geradores from "./pages/Geradores";
 import Historico from "./pages/Historico";
 import RelatorioGerador from "./pages/RelatorioGerador";
+import DefinirSenhaInicial from "./pages/DefinirSenhaInicial";
 
 interface CurrentUser {
   email: string;
@@ -68,6 +69,15 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
 
+  // O link de convite/recuperação do Supabase chega como
+  // "#access_token=...&type=invite" (ou "recovery") e autentica a sessão
+  // sozinho, sem nunca pedir uma senha — por isso a equipe não encontrava
+  // onde "criar" a senha de acesso. Captura isso síncrono, antes do SDK
+  // limpar a URL, para saber se precisa mostrar a tela de definir senha.
+  const [precisaDefinirSenha, setPrecisaDefinirSenha] = useState(
+    () => /type=invite|type=recovery/.test(window.location.hash)
+  );
+
   // Subscribe to the real Supabase Auth session
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -80,7 +90,10 @@ export default function App() {
       setCheckingSession(false);
     });
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((event: string, session: Session | null) => {
+      // PASSWORD_RECOVERY cobre o link de "esqueci minha senha"; o de convite
+      // dispara SIGNED_IN mesmo (já capturado acima pelo estado inicial).
+      if (event === "PASSWORD_RECOVERY") setPrecisaDefinirSenha(true);
       setCurrentUser(session ? mapSupabaseUser(session.user) : null);
     });
 
@@ -108,7 +121,7 @@ export default function App() {
 
   // Route Protection & Authorization Checks (PrivateRoute behavior)
   useEffect(() => {
-    if (checkingSession) return;
+    if (checkingSession || precisaDefinirSenha) return;
 
     if (!currentUser) {
       if (route.path !== "login") {
@@ -130,7 +143,7 @@ export default function App() {
         });
       }
     }
-  }, [currentUser, route.path, activeRole, checkingSession, defaultLandingPage]);
+  }, [currentUser, route.path, activeRole, checkingSession, defaultLandingPage, precisaDefinirSenha]);
 
   // State for search (we can link this search to any quick dashboard filters)
   const [globalSearch, setGlobalSearch] = useState("");
@@ -171,6 +184,23 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center" id="app-root">
         <div className="w-8 h-8 border-2 border-[#0B5577] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Sessão já autenticada pelo link de convite/recuperação, mas ainda sem
+  // senha definida — trava aqui antes de liberar o resto do app.
+  if (currentUser && precisaDefinirSenha) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col" id="app-root">
+        <Toaster position="top-right" richColors closeButton />
+        <DefinirSenhaInicial
+          email={currentUser.email}
+          onConcluido={() => {
+            setPrecisaDefinirSenha(false);
+            navigateTo("dashboard");
+          }}
+        />
       </div>
     );
   }
