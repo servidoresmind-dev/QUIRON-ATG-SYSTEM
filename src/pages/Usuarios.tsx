@@ -26,6 +26,7 @@ import VendedoresSection from "../components/Usuarios/VendedoresSection";
 import { supabase, isSupabaseConfigured } from "../utils/supabase";
 import { APP_PAGES, VENDEDOR_DEFAULT_PAGES } from "../utils/pages";
 import { registrarLog } from "../utils/logEdicoes";
+import { mensagemAmigavel } from "../utils/mensagensErro";
 
 interface UsuariosProps {
   activeRole: PerfilUsuario;
@@ -157,10 +158,10 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
           .then((corpo) => (typeof corpo?.error === "string" ? corpo.error : undefined))
           .catch(() => undefined);
       }
-      throw new Error(mensagemReal ?? invokeError.message);
+      throw new Error(mensagemAmigavel(mensagemReal ?? invokeError.message));
     }
 
-    if (data?.error) throw new Error(data.error);
+    if (data?.error) throw new Error(mensagemAmigavel(data.error));
     return data;
   };
 
