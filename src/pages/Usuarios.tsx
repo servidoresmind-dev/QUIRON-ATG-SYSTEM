@@ -137,7 +137,29 @@ export default function Usuarios({ activeRole }: UsuariosProps) {
   const invokeManageUsers = async (body: Record<string, unknown>) => {
     if (!supabase) throw new Error("Supabase não configurado.");
     const { data, error: invokeError } = await supabase.functions.invoke("manage-users", { body });
-    if (invokeError) throw invokeError;
+
+    if (invokeError) {
+      // Quando a função responde com status != 2xx (ex: 400 "Perfil inválido",
+      // "Este vendedor já está vinculado a outro usuário"), o supabase-js devolve
+      // um FunctionsHttpError genérico ("Edge Function returned a non-2xx status
+      // code") em vez da mensagem real — que vai no corpo da resposta, acessível
+      // só via `invokeError.context` (a Response bruta). Lê de lá antes de
+      // desistir e mostrar o texto genérico pro usuário.
+      const context = (invokeError as { context?: Response }).context;
+      let mensagemReal: string | undefined;
+      if (context && typeof context.json === "function") {
+        // .clone() evita "body already read" caso algo mais tente ler a Response.
+        // Se o corpo não for JSON válido, .json() rejeita — o catch só ignora
+        // essa falha de parse; nada aqui pode lançar o erro final por engano.
+        mensagemReal = await context
+          .clone()
+          .json()
+          .then((corpo) => (typeof corpo?.error === "string" ? corpo.error : undefined))
+          .catch(() => undefined);
+      }
+      throw new Error(mensagemReal ?? invokeError.message);
+    }
+
     if (data?.error) throw new Error(data.error);
     return data;
   };
