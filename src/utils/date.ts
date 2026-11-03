@@ -36,6 +36,25 @@ export function formatDate(dateString: string): string {
   return `${day}/${month}/${year}`;
 }
 
+// Soma meses a uma data "pura" (YYYY-MM-DD, sem hora/fuso) e devolve no mesmo
+// formato — usada para sugerir o vencimento da preditiva a partir do prazo do
+// item (preditiva_itens.periodicidade_meses). Clampa pro último dia do mês de
+// destino quando o dia de origem não existir lá (ex: 31/01 + 1 mês = 28/02,
+// nunca "03/03" — o erro clássico de somar meses direto num objeto Date).
+export function somarMeses(dataISO: string, meses: number): string {
+  const [ano, mes, dia] = dataISO.split("-").map(Number);
+  const indiceMes = mes - 1 + meses; // 0-based
+  const novoAno = ano + Math.floor(indiceMes / 12);
+  const novoMes = ((indiceMes % 12) + 12) % 12; // 0-based, sempre positivo
+  // new Date(ano, mesSeguinte, 0) = dia 0 do mês seguinte = último dia do mês
+  // de destino. Só usado pra achar esse número, nunca serializado — não sofre
+  // do problema de fuso que o resto deste arquivo evita.
+  const ultimoDiaDoMes = new Date(novoAno, novoMes + 1, 0).getDate();
+  const diaFinal = Math.min(dia, ultimoDiaDoMes);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${novoAno}-${pad(novoMes + 1)}-${pad(diaFinal)}`;
+}
+
 export function formatTime(dateString: string): string {
   const date = new Date(dateString);
   const hours = String(date.getHours()).padStart(2, "0");

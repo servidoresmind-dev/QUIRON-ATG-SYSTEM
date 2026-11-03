@@ -4,7 +4,7 @@ import { GeradorAtg, Preditiva, OxicatalisadorAtg } from "../../types";
 import { supabase } from "../../utils/supabase";
 import { salvarPreditiva } from "../../utils/atgBackend";
 import { registrarLog } from "../../utils/logEdicoes";
-import { formatDate } from "../../utils/date";
+import { formatDate, somarMeses } from "../../utils/date";
 import { toast } from "sonner";
 
 interface PreditivaTabProps {
@@ -295,7 +295,16 @@ export default function PreditivaTab({ gerador, usuario, somenteLeitura = false 
                     <input
                       type="date"
                       value={editRealizada}
-                      onChange={(e) => setEditRealizada(e.target.value)}
+                      onChange={(e) => {
+                        const novaData = e.target.value;
+                        setEditRealizada(novaData);
+                        // Sugere o vencimento a partir do prazo do item (catálogo
+                        // preditiva_itens). O campo continua editável logo abaixo —
+                        // é só um ponto de partida, não impede ajustar o valor.
+                        if (novaData && item.periodicidade_meses) {
+                          setEditVencimento(somarMeses(novaData, item.periodicidade_meses));
+                        }
+                      }}
                       disabled={editNaoAplica}
                       className="px-2 py-1 text-[11px] border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50 disabled:bg-slate-50"
                     />
