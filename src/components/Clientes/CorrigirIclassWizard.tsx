@@ -74,10 +74,13 @@ export default function CorrigirIclassWizard({ cliente, usuario, onClose, onSave
     if (!supabase) return;
     setSaving(true);
 
+    // status_conferencia não se atualiza sozinho — sem isso, o card continua
+    // mostrando "DIVERGENCIA" pra sempre mesmo depois de corrigir o vínculo.
     const valorDepois = {
       iclass_id_encontrado: escolha.iclass_id,
       iclass_nome: escolha.iclass_nome,
-      iclass_codigo_encontrado: escolha.iclass_codigo
+      iclass_codigo_encontrado: escolha.iclass_codigo,
+      status_conferencia: "OK"
     };
 
     const { error } = await supabase.from("omie_clientes").update(valorDepois).eq("id", cliente.id);
@@ -97,7 +100,8 @@ export default function CorrigirIclassWizard({ cliente, usuario, onClose, onSave
       {
         iclass_id_encontrado: cliente.iclass_id_encontrado,
         iclass_nome: cliente.iclass_nome,
-        iclass_codigo_encontrado: cliente.iclass_codigo_encontrado
+        iclass_codigo_encontrado: cliente.iclass_codigo_encontrado,
+        status_conferencia: cliente.status_conferencia
       },
       valorDepois
     );
