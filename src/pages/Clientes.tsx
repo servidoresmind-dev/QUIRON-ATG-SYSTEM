@@ -19,7 +19,8 @@ import {
   UserPlus,
   FileSearch,
   Trash2,
-  Briefcase
+  Briefcase,
+  Ban
 } from "lucide-react";
 import { ClienteCard, GeradorAtg, EstadoClienteCard, PerfilUsuario, Vendedor } from "../types";
 import { supabase, isSupabaseConfigured } from "../utils/supabase";
@@ -60,6 +61,7 @@ export default function Clientes({ activeRole }: ClientesProps) {
   // Lista de vendedores para a etiqueta, o filtro e o dropdown de atribuição.
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [atribuindoId, setAtribuindoId] = useState<number | null>(null);
+  const [togglingInativoId, setTogglingInativoId] = useState<number | null>(null);
   // Só para o perfil Vendedor: o vendedor ligado a este login (null = sem vínculo).
   const [meuVendedorId, setMeuVendedorId] = useState<number | null>(null);
 
@@ -373,6 +375,42 @@ export default function Clientes({ activeRole }: ClientesProps) {
     }
   };
 
+  // Inativar/reativar nunca toca no vínculo com Omie/iClass (iclass_id_encontrado,
+  // codigo_omie etc.) — só marca o cliente como oculto/visível aqui. Se o cliente
+  // voltar, reativar reaproveita o mesmo cadastro, sem recriar nada nos outros sistemas.
+  const handleToggleInativoCliente = async (cliente: ClienteCard) => {
+    if (!supabase || somenteLeitura) return;
+    setTogglingInativoId(cliente.id);
+
+    const { error: updateError } = await supabase
+      .from("omie_clientes")
+      .update({ inativo: !cliente.inativo })
+      .eq("id", cliente.id);
+
+    setTogglingInativoId(null);
+
+    if (updateError) {
+      toast.error("Erro ao alterar status do cliente.", { description: updateError.message });
+      return;
+    }
+
+    await registrarLog(
+      "cliente",
+      cliente.id,
+      cliente.inativo ? "reativou" : "inativou",
+      currentUserEmail,
+      { inativo: cliente.inativo },
+      { inativo: !cliente.inativo }
+    );
+
+    setClientes((prev) => prev.map((c) => (c.id === cliente.id ? { ...c, inativo: !cliente.inativo } : c)));
+    toast.success(
+      cliente.inativo
+        ? `${cliente.razao_social} reativado com sucesso!`
+        : `${cliente.razao_social} inativado. O cadastro foi mantido — reative quando ele voltar.`
+    );
+  };
+
   const handleGeradorDeleted = (geradorId: number) => {
     setGeradoresByCliente((prev) => {
       const next: Record<number, GeradorAtg[]> = {};
@@ -664,6 +702,17 @@ export default function Clientes({ activeRole }: ClientesProps) {
                             >
                               <FileSearch className="w-3.5 h-3.5" />
                               <span>Adicionar Gerador por O.S.</span>
+                            </button>
+                          )}
+
+                          {activeRole === PerfilUsuario.ADMIN && (
+                            <button
+                              onClick={() => handleToggleInativoCliente(cliente)}
+                              disabled={togglingInativoId === cliente.id}
+                              className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-soft cursor-pointer disabled:opacity-60"
+                            >
+                              {cliente.inativo ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
+                              <span>{cliente.inativo ? "Reativar Cliente" : "Inativar Cliente"}</span>
                             </button>
                           )}
 
