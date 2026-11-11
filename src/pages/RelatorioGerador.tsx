@@ -10,7 +10,17 @@ import { supabase, isSupabaseConfigured } from "../utils/supabase";
 import { navigateTo } from "../utils/navigation";
 import { formatDate, formatTime } from "../utils/date";
 import { calcularSaude, normalizarStatus, StatusItemSaude } from "../utils/saudeGerador";
-import logoAtg from "../assets/logo_boll.svg";
+import logoAtg from "../assets/logo_atg_geradores.png";
+
+// Contato único exibido em todos os relatórios (a tabela `vendedores` não tem
+// coluna de telefone). Se cada consultor precisar do próprio WhatsApp, o caminho
+// é criar essa coluna e ler de lá.
+const WHATSAPP_ATG = { exibicao: "(11) 94221-0721", link: "https://wa.me/5511942210721" };
+
+function textoPeriodo(meses: number | null): string {
+  if (!meses) return "—";
+  return `${meses} ${meses === 1 ? "mês" : "meses"}`;
+}
 
 interface RelatorioGeradorProps {
   geradorId?: string;
@@ -42,18 +52,6 @@ const STATUS_INFO: Record<StatusItemSaude, { label: string; badge: string }> = {
   sem_data: { label: "Sem data registrada", badge: "bg-slate-100 text-slate-600 border-slate-200" },
   nao_aplica: { label: "Não se aplica", badge: "bg-slate-50 text-slate-400 border-slate-200" }
 };
-
-function textoPrazo(status: StatusItemSaude, dias: number | null): string {
-  if (dias === null) return "";
-  if (status === "vencido") {
-    const d = Math.abs(dias);
-    return `vencido há ${d} dia${d === 1 ? "" : "s"}`;
-  }
-  if (status === "a_vencer") {
-    return dias === 0 ? "vence hoje" : `vence em ${dias} dia${dias === 1 ? "" : "s"}`;
-  }
-  return "";
-}
 
 function Campo({ rotulo, valor, mono = false }: { rotulo: string; valor: React.ReactNode; mono?: boolean }) {
   return (
@@ -234,7 +232,7 @@ export default function RelatorioGerador({ geradorId, activeRole }: RelatorioGer
   }
 
   const { gerador, cliente, vendedor, preditivas, oxi, emitidoEm } = dados;
-  const { totais, pendencias, caminho, percentual } = saude;
+  const { totais, caminho, percentual } = saude;
   const emDia = caminho === 1;
 
   // O navegador sugere o título da página como nome do arquivo ao "Salvar como
@@ -282,9 +280,9 @@ export default function RelatorioGerador({ geradorId, activeRole }: RelatorioGer
         {/* Cabeçalho */}
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
           <div className="flex items-center gap-4">
-            <img src={logoAtg} alt="ATG Geradores" className="w-14 h-14 shrink-0" />
+            <img src={logoAtg} alt="ATG Geradores" className="h-16 w-auto shrink-0" />
             <div>
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-brand-600">ATG Geradores</p>
+              <p className="text-[13px] font-extrabold uppercase tracking-[0.2em] text-brand-600">ATG Geradores</p>
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">Relatório de Saúde do Gerador</h1>
             </div>
           </div>
@@ -336,21 +334,21 @@ export default function RelatorioGerador({ geradorId, activeRole }: RelatorioGer
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 {totais.vencidos > 0 && (
-                  <span className="px-2.5 py-1 rounded-lg bg-white border border-rose-200 text-rose-700 text-xs font-bold">
+                  <span className="px-3 py-1.5 rounded-lg bg-white border border-rose-200 text-rose-700 text-sm font-bold">
                     {totais.vencidos} vencido{totais.vencidos === 1 ? "" : "s"}
                   </span>
                 )}
                 {totais.aVencer > 0 && (
-                  <span className="px-2.5 py-1 rounded-lg bg-white border border-amber-200 text-amber-700 text-xs font-bold">
+                  <span className="px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-amber-700 text-sm font-bold">
                     {totais.aVencer} a vencer
                   </span>
                 )}
                 {totais.semData > 0 && (
-                  <span className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 text-xs font-bold">
+                  <span className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 text-sm font-bold">
                     {totais.semData} sem data registrada
                   </span>
                 )}
-                <span className="px-2.5 py-1 rounded-lg bg-white border border-emerald-200 text-emerald-700 text-xs font-bold">
+                <span className="px-3 py-1.5 rounded-lg bg-white border border-emerald-200 text-emerald-700 text-sm font-bold">
                   {totais.ok} em dia
                 </span>
               </div>
@@ -382,32 +380,6 @@ export default function RelatorioGerador({ geradorId, activeRole }: RelatorioGer
           </div>
         </section>
 
-        {/* Pendências (só quando há) */}
-        {pendencias.length > 0 && (
-          <section className="break-inside-avoid space-y-3">
-            <h2 className="text-xs font-extrabold uppercase tracking-wider text-brand-700 border-b border-slate-100 pb-1.5">
-              Itens que precisam de atenção
-            </h2>
-            <ul className="space-y-2">
-              {pendencias.map((p, idx) => (
-                <li
-                  key={`${p.nome}-${idx}`}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-800">{p.nome}</p>
-                    <p className="text-[11px] text-slate-500">
-                      {p.dataVencimento ? `Vencimento: ${formatDate(p.dataVencimento)}` : "Sem data de vencimento registrada"}
-                      {textoPrazo(p.status, p.diasParaVencer) ? ` · ${textoPrazo(p.status, p.diasParaVencer)}` : ""}
-                    </p>
-                  </div>
-                  <BadgeStatus status={p.status} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
         {/* Todos os itens */}
         <section className="space-y-3">
           <h2 className="text-xs font-extrabold uppercase tracking-wider text-brand-700 border-b border-slate-100 pb-1.5">
@@ -420,8 +392,9 @@ export default function RelatorioGerador({ geradorId, activeRole }: RelatorioGer
               <thead>
                 <tr className="text-[10px] uppercase font-bold tracking-wider text-slate-400 border-b border-slate-200">
                   <th className="py-2 pr-3">Item</th>
-                  <th className="py-2 pr-3">Última realização</th>
-                  <th className="py-2 pr-3">Vencimento</th>
+                  <th className="py-2 pr-3">Período</th>
+                  <th className="py-2 pr-3">Última troca</th>
+                  <th className="py-2 pr-3">Próxima troca</th>
                   <th className="py-2 text-right">Situação</th>
                 </tr>
               </thead>
@@ -431,6 +404,7 @@ export default function RelatorioGerador({ geradorId, activeRole }: RelatorioGer
                   return (
                     <tr key={p.id} className="break-inside-avoid">
                       <td className="py-2 pr-3 font-semibold text-slate-800">{p.item_nome}</td>
+                      <td className="py-2 pr-3 text-slate-600 whitespace-nowrap">{textoPeriodo(p.periodicidade_meses)}</td>
                       <td className="py-2 pr-3 text-slate-600">{p.data_realizada ? formatDate(p.data_realizada) : "—"}</td>
                       <td className="py-2 pr-3 text-slate-600">{p.data_vencimento ? formatDate(p.data_vencimento) : "—"}</td>
                       <td className="py-2 text-right">
@@ -469,6 +443,15 @@ export default function RelatorioGerador({ geradorId, activeRole }: RelatorioGer
             ) : (
               "ATG Geradores"
             )}
+            <span className="font-normal text-slate-500"> · WhatsApp </span>
+            <a
+              href={WHATSAPP_ATG.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-slate-800 no-underline"
+            >
+              {WHATSAPP_ATG.exibicao}
+            </a>
           </p>
         </section>
 
